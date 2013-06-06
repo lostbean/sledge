@@ -47,6 +47,8 @@ data DFDzx =
   , dFdz3 :: Double
   } deriving (Show)
 
+-- | Variance directions of the Bingham distribution. The direction must
+-- normalized and orthonogal to each other.
 data DistDir =
   DistDir
   { v1 :: Vec4
@@ -72,7 +74,7 @@ mkBingham :: (Double, Quaternion) -> (Double, Quaternion) -> (Double, Quaternion
 mkBingham  x1 x2 x3 = let
   [(z1, d1), (z2, d2), (z3, d3)] = L.sortBy (\a b -> fst a `compare` fst b) [x1, x2, x3]
   -- add check orthogonality
-  dir = DistDir (quater2vec d1) (quater2vec d2) (quater2vec d3)
+  dir = DistDir (quaterVec d1) (quaterVec d2) (quaterVec d3)
   z   = Vec3 z1 z2 z3
   -- space of 3-sphere (S3 c R4)
   f   = computeF 3 z1 z2 z3
@@ -84,16 +86,10 @@ mkBingham  x1 x2 x3 = let
   mode = binghamMode dir
   in Bingham z dir f mode dF s
 
-quater2vec :: Quaternion -> Vec4
-quater2vec (Quaternion (q0, qv)) = extendHeadWith q0 qv
-
-vec2quater :: Vec4 -> Quaternion
-vec2quater (Vec4 q0 q1 q2 q3) = Quaternion (q0, Vec3 q1 q2 q3)
-  
 -- | Eval the Bingham distribution at specific point
 binghamPDF :: Bingham -> Quaternion -> Double
 binghamPDF Bingham{..} q = let
-  v = quater2vec q
+  v = quaterVec q
   k = concentrations &. (mapVec (\x->x*x) $ directions |> v)
   in exp k / normalization
      
@@ -101,7 +97,7 @@ binghamPDF Bingham{..} q = let
 
 scatterMatrix :: Double -> DistDir -> Vec3 -> DFDzx -> Quaternion -> Mat4
 scatterMatrix f DistDir{..} z DFDzx{..} qMode = let
-  mode = quater2vec qMode
+  mode = quaterVec qMode
   km = 1 - (dFdz1 + dFdz2 + dFdz3) / f
   sm = km *& outer mode mode
   s1 = (dFdz1 / f) *& outer v1 v1
@@ -141,8 +137,7 @@ binghamMode directions = let
     | cut == 1  = Vec4 xa 1 xb xc
     | cut == 2  = Vec4 xa xb 1 xc
     | otherwise = Vec4 xa xb xc 1
-  Vec4 q0 q1 q2 q3 = normalize x
-  in Quaternion (q0, Vec3 q1 q2 q3)
+  in mkQuaternion x
 
 -- =========================================== Sampling ===========================================
 
@@ -183,7 +178,7 @@ random01 = abs <$> randomIO
 measureMean :: [Quaternion] -> Vec4
 measureMean [] = zero
 measureMean l = let
-  w = L.foldl' (\acc x -> let v = quater2vec x in acc &+ v) zero l
+  w = L.foldl' (\acc x -> let v = quaterVec x in acc &+ v) zero l
   n = fromIntegral $ length l
   in w &* (1 / n)
 
@@ -191,7 +186,7 @@ measureCovariance :: [Quaternion] -> Mat4
 measureCovariance [] = zero
 measureCovariance l = let
   --m = measureMean l
-  w = L.foldl' (\acc x -> let v = quater2vec x in acc &+ (outer v v)) zero l
+  w = L.foldl' (\acc x -> let v = quaterVec x in acc &+ (outer v v)) zero l
   n = fromIntegral $ length l
   in w &* (1 / n)
 
@@ -232,7 +227,7 @@ multiNormalRand z cv = randomIO >>= sample
 -- sampler.
 quaternionNormalRand :: Vec4 -> Mat4 -> Quaternion -> IO Quaternion
 quaternionNormalRand z cv q = let
-  foo = vec2quater .  normalize . (&+ quater2vec q)
+  foo = mkQuaternion . (&+ quaterVec q)
   in foo <$> multiNormalRand z cv
   
 -- | Compute an angular central gaussian pdf in principal components form for
@@ -242,7 +237,7 @@ centralGaussianPDF :: Vec4 -> Mat4 -> Quaternion -> Double
 centralGaussianPDF z cv qx = let
   inte = vecFoldr (*) z
   d    = 4
-  x    = quater2vec qx
+  x    = quaterVec qx
   k    = inte * surface_area_sphere (d - 1)
   -- Is the same as: SUM ( <dx, V[i]> / z[i] )^2
   e    = normsqr $ (x .* (transpose cv)) &! (vecMap (1/) z)
@@ -254,8 +249,8 @@ centralGaussianPDF z cv qx = let
 multiNormalPDF :: Vec4 -> Mat4 -> Quaternion -> Quaternion -> Double
 multiNormalPDF z cv qmu qx = let
   inte = vecFoldr (*) z
-  mu = quater2vec qmu
-  x  = quater2vec qx
+  mu = quaterVec qmu
+  x  = quaterVec qx
   d  = 4
   dx = x &- mu
   k  = ((2 * pi) ** (d/2)) * inte
@@ -303,27 +298,13 @@ instance RenderCell (Int, Int, Int, Int) where
   makeCell (a,b,c,d) = U.fromList [a,b,c,d]
   getType _          = VTK_QUAD
 
-axisPair2q :: Double -> Vec3 -> Quaternion
-axisPair2q omega n
-  | l == 0    = Quaternion (c, s *& (normalize n))
-  | otherwise = Quaternion (c, s *& (normalize n))
-  where
-    s = sin (0.5*omega)
-    c = cos (0.5*omega)
-    l = norm n
-    
-q2axisPair :: Quaternion -> (Double, Vec3)
-q2axisPair (Quaternion (q0, v1)) = (omega, s *& v1)
-  where
-    omega = 2 * acos q0
-    s = 1 / sin (0.5 * omega)
-
 renderBingham :: Bingham -> Int -> Double -> VTK Vec3
 renderBingham dist n omega = let
   mesh@(ps, _) = sphere n n
   vtk          = renderSphereVTK mesh
   attr         = mkPointAttr "intensity" (\a _ -> intensity V.! a)
-  intensity    = V.map (binghamPDF dist . axisPair2q omega) ps
+  axis2q x     = toQuaternion $ mkAxisPair x (Rad omega)
+  intensity    = V.map (binghamPDF dist . axis2q) ps
   in addDataPoints vtk attr
 
 renderSphereVTK :: (Vector Vec3, Vector (Int, Int, Int, Int)) -> VTK Vec3
@@ -336,14 +317,15 @@ renderFull dist n = let
   omegas = V.generate n ((step *) . fromIntegral)
   attr o = mkPointAttr ("intensity-" ++ show o) (\a _ -> (intensity o) V.! a)
   mesh@(ps, _) = sphere n n
-  intensity o  = V.map (binghamPDF dist . axisPair2q o) ps
+  axis2q o x   = toQuaternion $ mkAxisPair x (Rad o)
+  intensity o  = V.map (binghamPDF dist . axis2q o) ps
   in V.foldr (\o acc -> addDataPoints acc (attr o)) vtk omegas
      -- foldl crashs
      -- in V.foldr (\o acc -> addDataPoints acc (attr o)) vtk omegas
 
 renderPoints :: [Quaternion] -> VTK Vec3
 renderPoints lq = let
-  (omega, pos) = V.unzip . V.map q2axisPair $ V.fromList lq
+  (pos, omega) = V.unzip . V.map (axisAngle . fromQuaternion) $ V.fromList lq
   pids = V.enumFromN (0 :: Int) (V.length pos)
   vtk  = mkUGVTK "samples" (V.convert pos) pids
   attr = mkPointAttr ("Omegas") (\a _ -> (omega) V.! a)
@@ -356,9 +338,9 @@ writeQuater name = writeUniVTKfile ("/home/edgar/Desktop/" ++ name ++ ".vtu")
 
 testSample :: Int -> IO ()
 testSample n = let
-  d1 = (10, Quaternion (0, Vec3 0 1 0))
-  d2 = (60, Quaternion (0, Vec3 1 0 0))
-  d3 = (60, Quaternion (0, Vec3 0 0 1))
+  d1 = (1, mkQuaternion (Vec4 0 0 1 0))
+  d2 = (6, mkQuaternion (Vec4 0 1 0 0))
+  d3 = (6, mkQuaternion (Vec4 0 0 0 1))
   dist = mkBingham d1 d2 d3
   in do
      a <- sampleBingham dist n
@@ -370,8 +352,8 @@ testSample n = let
 
 testDist :: Bingham
 testDist = let
-  d1 = (30, Quaternion (0, Vec3 0 1 0))
-  d2 = (2, Quaternion (0, Vec3 1 0 0))
-  d3 = (1, Quaternion (1, Vec3 0 0 0))
+  d1 = (30, mkQuaternion (Vec4 0 0 1 0))
+  d2 = (2,  mkQuaternion (Vec4 0 1 0 0))
+  d3 = (1,  mkQuaternion (Vec4 1 0 0 0))
   dist = mkBingham d1 d2 d3
   in dist
