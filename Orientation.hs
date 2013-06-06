@@ -2,24 +2,40 @@
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
+{- |
+
+This module defines orientation representations and its operations.
+The general convention is:
+- e1 (1,0,0) ~ RD
+- e2 (0,1,0) ~ TD
+- e3 (0,0,1) ~ ND
+
+References:
+"Conversion of EBSD data by a quaternion based algorithm to be used for
+grain structure simulations"
+"Orientation Library Manual" by Romain Quey 
+
+-}
+
 module Hammer.Texture.Orientation
-       ( Euler
-       , AxisPair
-       , Rodrigues  (..)
-       , Quaternion (..)
-       , Angle      (..)
-       , RotMatrix  (..)
-       , mkAxisPair
+       ( Quaternion (quaterVec)
+       , mkUnsafeQuaternion
+       , mkQuaternion
+       , splitQuaternion
+       , unsafeMergeQuaternion
+       , mergeQuaternion
+       , getOmega
+       , Rot        (..)
+       , Angle      (..) 
+       , Deg        (..)
+       , Rad        (..)
+       , Euler      (phi1, phi, phi2)
        , mkEuler
-       , toRodrigues
-       , fromRodrigues
-       , (+@+)
-       , (-@-)
-       , invert
-       , getTheta
-       , toRad
-       , toDeg
-       , checkRotationSystemModule
+       , AxisPair   (axisAngle)
+       , mkAxisPair
+       , Rodrigues  (rodriVec)
+       , mkRodrigues
+       , RotMatrix  (rotMat)
        ) where
 
 import Data.Ratio
@@ -30,156 +46,311 @@ import Hammer.Math.Algebra
 --import Debug.Trace
 --dbg s x = trace (s ++ show x) x
 
-data Angle = Deg { unDeg :: Double }
-           | Rad { unRad :: Double }
-             deriving (Eq)
+-- ==================================  Types ====================================
 
+-- | Unit quaternion representation of orientation (rotation).
+-- It is the basic and central representation used in this module.
+newtype Quaternion =
+  Quaternion
+  { quaterVec :: Vec4
+  } deriving (Eq)
+
+-- | Angles in degrees.
+newtype Deg = Deg { unDeg :: Double } deriving (Eq, Num, Ord)
+
+-- | Angles in radians.
+newtype Rad = Rad { unRad :: Double } deriving (Eq, Num, Ord)
+
+-- | Euler angles represents the composition of three independent
+-- rotations: phi1 -> PHI -> phi2 where
+-- - phi1 ~ ND   (Z)
+-- - PHI  ~ RD'  (X')
+-- - phi2 ~ ND'' (Z'')
 data Euler =
   Euler
   { phi1 :: Double
   , phi  :: Double
   , phi2 :: Double
-  } deriving (Show, Eq)
-             
-newtype Rodrigues  = Rodrigues  Vec3           deriving (Eq)
-newtype RotMatrix  = RotMatrix  Mat3           deriving (MultSemiGroup, Matrix, Eq)
-newtype Quaternion = Quaternion (Double, Vec3) deriving (Eq, Show)
-newtype AxisPair   = AxisPair   (Vec3, Double) deriving (Eq)
+  } deriving (Eq)
 
-mkAxisPair :: Vec3 -> Angle -> AxisPair
-mkAxisPair r omega = let
-  Rad theta = toRad omega
-  in AxisPair (normalize r, theta)
+-- | Axis-angle representation. The axis is a normalized direction
+-- and the angle in radians.
+newtype AxisPair =
+  AxisPair
+  { axisAngle :: (Vec3, Double)
+  } deriving (Eq)
 
-mkEuler :: Angle -> Angle -> Angle -> Euler
+-- | Frank-Rodrigues representation. 
+newtype Rodrigues =
+  Rodrigues
+  { rodriVec :: Vec3
+  } deriving (Eq)
+
+-- | Frank-Rodrigues representation. The  
+newtype RotMatrix =
+  RotMatrix
+  { rotMat :: Mat3
+  } deriving (MultSemiGroup, Matrix, Eq)
+
+-- ==================================  Angle class ===================================
+
+class Angle a where
+  -- | Converts a value in *radians* to its @Angle@ format.
+  toAngle   :: Double -> a
+  -- | Converts a @Angle@ to its correspondent value in *radians*.
+  fromAngle :: a -> Double
+
+instance Angle Deg where
+  toAngle   = Deg . (* (180 / pi)) 
+  fromAngle = (* (pi / 180)) . unDeg 
+
+instance Angle Rad where
+  toAngle   = Rad
+  fromAngle = unRad 
+
+-- ===============================  Data constructors =================================
+
+-- | Safe constructor for axis-angle.
+mkAxisPair :: (Angle ang)=> Vec3 -> ang -> AxisPair
+mkAxisPair r omega
+  | rlen > 0 = AxisPair ((1 / rlen) *& r, fromAngle omega)
+  | otherwise = zerorot
+  where rlen = norm r
+
+-- | Safe constructor for Euler angles in the Bunge convension.
+-- Its sequence is: phi1 -> PHI -> phi2
+mkEuler :: (Angle a1, Angle a2, Angle a3)=> a1 -> a2 -> a3 -> Euler
 mkEuler p1 p p2 = Euler
-  { phi1 = unRad $ toRad p1
-  , phi  = unRad $ toRad p
-  , phi2 = unRad $ toRad p2 }
+  { phi1 = fromAngle p1
+  , phi  = fromAngle p
+  , phi2 = fromAngle p2 }
 
--- | This class defines rotation composition
+-- | Safe constructor for quaternions
+mkQuaternion :: Vec4 -> Quaternion
+mkQuaternion = Quaternion . normalize
+
+-- | Constructor for Frank-Rodrigues.
+mkRodrigues :: Vec3 -> Rodrigues
+mkRodrigues = Rodrigues
+
+-- | Get the rotation angle, Omega, of quaternion. It can used for
+-- retrive the misorientation angle.
+getOmega :: Quaternion -> Double
+getOmega = (2 *) . acos . _1 . quaterVec
+
+-- | Splits the quaternion in two components: angle related and direction related.
+splitQuaternion :: Quaternion -> (Double, Vec3)
+splitQuaternion (Quaternion (Vec4 q0 q1 q2 q3)) = (q0, Vec3 q1 q2 q3)
+
+-- | Merges the two quaternion components: angle related and direction related.
+mergeQuaternion :: (Double, Vec3) -> Quaternion
+mergeQuaternion (q0, Vec3 q1 q2 q3) = mkQuaternion (Vec4 q0 q1 q2 q3)
+ 
+-- | *Unsafe* quaternion constructor. It assumes a normalized input.
+mkUnsafeQuaternion :: Vec4 -> Quaternion
+mkUnsafeQuaternion = Quaternion 
+                                                 
+-- | *Unsafe* quaternion merging constructor. It assumes a normalized input where
+-- the single value and the vector in R3 form a unit vector in R4 (unit quaternion).
+unsafeMergeQuaternion :: (Double, Vec3) -> Quaternion
+unsafeMergeQuaternion (q0, Vec3 q1 q2 q3) = mkUnsafeQuaternion (Vec4 q0 q1 q2 q3)
+
+-- =====================================  Rot class ======================================
+
+-- | This class defines basic orientation (rotation) operations.
 class Rot a where
-  (+@+)          :: a -> a -> a
-  (-@-)          :: a -> a -> a
-  compose        :: a -> a -> a
-  misorientation :: a -> a -> a
-  invert         :: a -> a
+  -- | Orientation composition. Given two orientations (passive rotations)
+  -- g1 and g2, the operation
+  -- > g3 = g1 +@> g2
+  -- applies a passive rotation g2 over the g1. In other words, it is the
+  -- rotation g1 followed by the rotation g2. Note that the g2 rotation is
+  -- applied on the reference frame of g1. This operation is not commutative.
+  (+@>) :: a -> a -> a
+
+  -- | Misorientation operator. Given two orientations (passive rotations)
+  -- g1 and g2, the operation
+  -- > g12 = g2 -@- g1
+  -- finds the rotation difference between g1 and g2 in the reference global
+  -- frame that brings g1 to coincide to g2. Also note following rule:
+  -- > g2 -@- g1 == invert (g1 -@- g2)
+  (-@-) :: a -> a -> a
+  a -@- b = a +@> (invert b)
   
-  toRodrigues    :: a -> Rodrigues
-  fromRodrigues  :: Rodrigues -> a
-  
-  compose a b        = a +@+ b
-  misorientation a b = a -@- b
-  a -@- b            = a +@+ (invert b)
+  -- | Misorientation operator in the crystal frame. Given two orientations
+  -- (passive rotations) g1 and g2, the operation
+  -- > g12 = g2 -#- g1
+  -- finds the rotation difference between g1 and g2 in the *reference frame
+  -- of g1* that brings g1 to coincide to g2 . Also note following rules:
+  -- > g2 -#- g1 == invert (g1 -#- g2)
+  -- > g2 == g1 +@> (g2 -#- g1)
+  (-#-) :: a -> a -> a
+  a -#- b = (invert b) +@> a
 
--- =========================== Instances of Rot class ==========================
+  -- | Opposite orientation (inverse rotation).
+  invert :: a -> a
 
-instance Rot Rodrigues where
-  (Rodrigues rA) +@+ (Rodrigues rB) = let
-    r = (rA &+ rB) &- (rA &^ rB)
-    k = 1.0 - (rA &. rB)
-    in Rodrigues $ r &* (1 / k)
-  invert (Rodrigues r) = Rodrigues $ neg r
-  toRodrigues   = id
-  fromRodrigues = id  
-    
-instance Rot AxisPair where
-  a +@+ b = fromRodrigues $ (toRodrigues a) +@+ (toRodrigues b)
-  invert (AxisPair (v, a)) = AxisPair (neg v, a)
-  toRodrigues (AxisPair (v, theta))
-    | l == 0    = Rodrigues zero
-    | otherwise = Rodrigues $ (k / l) *& v
-    where
-      l = norm v
-      k = tan (theta / 2)
-  fromRodrigues (Rodrigues r) = AxisPair (v, theta)
-    where
-      v | l == 0    = zero
-        | otherwise = r &* (l / 1)
-      l     = norm r
-      theta = 2 * atan l
+  -- | Identity rotation.
+  zerorot :: a
 
-instance Rot Euler where
-  toRodrigues Euler{..} = let
-    -- P. Neumann (1991). “Representation of orientations of symmetrical objects by Rodrigues vectors.”
-    -- Textures and Microstructures 14-18: 53-58
-    diffphi = (phi2 - phi1)/2
-    addphi  = (phi2 + phi1)/2
-    tanPHI  = tan (phi/2)
-    cosaddphi = cos addphi
+  -- | Converts a rotation to its quaternion form.
+  toQuaternion :: a -> Quaternion
 
-    r1 = tanPHI * ((cos diffphi) / cosaddphi)
-    r2 = (-1) * tanPHI * ((sin diffphi) / cosaddphi)
-    r3 = tan addphi
-    in Rodrigues $ Vec3 r1 r2 r3
-  fromRodrigues = undefined
+  -- | Converts a quaternion to another representation form.
+  fromQuaternion :: Quaternion -> a
 
 instance Rot Quaternion where
-  (Quaternion (p0, p)) +@+ (Quaternion (q0, q)) = let
-    pq0 = p0 * q0 - p &. q
-    pq  = p0 *& q &+ q0 *& p &+ p &^ q
-    in Quaternion (pq0, pq)
-  invert (Quaternion (q0, q)) = Quaternion (q0, neg q)
-  toRodrigues (Quaternion (q0, q)) = let
-    in undefined 
-  fromRodrigues x = let
-    q0 = cos (theta / 2)
-    q  = r &* (sin $ theta / 2)
-    AxisPair (r, theta) = fromRodrigues x
-    in Quaternion (q0, q)
+  p +@> q = let
+    (p0, pv) = splitQuaternion p
+    (q0, qv) = splitQuaternion q
+    pq0 = p0 * q0 - pv &. qv
+    pq  = p0 *& qv &+ q0 *& pv &+ pv &^ qv
+    in unsafeMergeQuaternion (pq0, pq)
+  invert q = let
+    (q0, qv) = splitQuaternion q
+    in unsafeMergeQuaternion (q0, neg qv)
+  toQuaternion   = id
+  fromQuaternion = id  
+  zerorot        = mkQuaternion $ Vec4 1 0 0 0
+
+instance Rot Rodrigues where
+  (Rodrigues rA) +@> (Rodrigues rB) = let
+    r = (rB &+ rA) &- (rB &^ rA)
+    k = 1.0 - (rB &. rA)
+    in Rodrigues $ r &* (1 / k)
+  invert (Rodrigues r) = Rodrigues $ neg r
+  zerorot = Rodrigues zero
+  toQuaternion (Rodrigues r)
+    | rlen > 0  = unsafeMergeQuaternion (q0, qv)
+    | otherwise = zerorot
+    where
+      rlen  = norm r
+      halfW = atan rlen  -- half omega
+      q0    = cos halfW 
+      qv    = r &* ((sin halfW) / rlen)
+  fromQuaternion q
+    | qvlen > 0 = Rodrigues (k *& qv)
+    | otherwise = zerorot
+    where
+      (q0, qv) = splitQuaternion q
+      halfW    = acos q0  -- half omega
+      qvlen    = norm qv
+      k        = (tan halfW) / qvlen
+
+instance Rot AxisPair where
+  a +@> b = fromQuaternion $ (toQuaternion a) +@> (toQuaternion b)
+  invert (AxisPair (v, a)) = AxisPair (neg v, a)
+  zerorot = AxisPair (Vec3 1 0 0, 0)
+  toQuaternion (AxisPair (r, omega))= let
+    q0 = cos (0.5 * omega) 
+    q  = r &* sin (0.5 * omega)
+    in unsafeMergeQuaternion (q0, q)
+  fromQuaternion q
+    | qvlen > 0 = AxisPair ((1 / qvlen) *& qv, omega)
+    | otherwise = zerorot 
+    where
+      (q0, qv) = splitQuaternion q
+      omega    = 2 * acos q0
+      qvlen    = norm qv
+
+instance Rot Euler where
+  a +@> b = fromQuaternion $ (toQuaternion a) +@> (toQuaternion b)
+  invert  = fromQuaternion . invert . toQuaternion
+  zerorot = Euler 0 0 0
+  toQuaternion Euler{..} = let
+    dphi = (phi1 - phi2) / 2  -- the reference was wrong, phi1 and phi2 were swapped.
+    aphi = (phi1 + phi2) / 2
+    s  = sin (phi / 2)
+    c  = cos (phi / 2)
+    q0 = c * (cos aphi)
+    q1 = s * (cos dphi) 
+    q2 = s * (sin dphi)
+    q3 = c * (sin aphi) 
+    in Quaternion (Vec4 q0 q1 q2 q3)
+  fromQuaternion (Quaternion (Vec4 q0 q1 q2 q3))
+    | phi == 0  = Euler (2 * acos q0) phi 0 -- zero by convesion
+    | phi == pi = Euler (2 * acos q1) phi 0 -- zero by convesion
+    | otherwise = Euler phi1          phi phi2 
+    where
+      -- Uses atan2  to avoid problem with div by zero and zero/zero
+      phi1 = atan2 q3 q0 + atan2 q2 q1
+      phi  = 2 * atan2 (sqrt (q1 * q1 + q2 * q2)) (sqrt (q0 * q0 + q3 * q3))
+      phi2 = atan2 q3 q0 - atan2 q2 q1
 
 instance Rot RotMatrix where
-  a +@+ b = a .*. b
+  a +@> b = b .*. a  -- In matrix composition the multiplication is commuted
   invert  = transpose
-  toRodrigues (RotMatrix m) = let
-    (Mat3 (Vec3 a11 a12 a13) (Vec3 a21 a22 a23) (Vec3 a31 a32 a33)) = m
-    -- from  Introduction to texture analysis : macrotexture, microtexture, and orientation
-    -- mapping, Olaf Engler and Valerie Randle, 2nd ed.
-    -- Obs
-    -- the conv. is not always straight forward, e.g. "toRodrigues $ RotMatrix ( (-1.0,0.0,0.0),(0,0,-1),(0,-1,0))"
-    -- result in (0,0,0) which is, by symmetry, is equivalent to the matrix!
-    trace = a11 + a22 + a33
-    theta = acos (0.5*(trace-1))
-    q = 2 * (sin theta)
-    c1 = (a23-a32)/q
-    c2 = (a31-a13)/q
-    c3 = (a12-a21)/q
-    c1'= sqrt ((a11 + 1)/2)
-    c2'= sqrt ((a22 + 1)/2)
-    c3'= sqrt ((a33 + 1)/2)
-    axispair
-      | q == 0    = AxisPair (Vec3 c1' c2' c3', theta)
-      | otherwise = AxisPair (Vec3 c1 c2 c3   , theta)
-    in toRodrigues axispair
-       
-  fromRodrigues r = let
-    AxisPair (Vec3 r1 r2 r3, theta) = fromRodrigues r
-    -- from  Introduction to texture analysis : macrotexture, microtexture, and orientation
-    -- mapping, Olaf Engler and Valerie Randle, 2nd ed.
-    costheta = cos theta
-    sintheta = sin theta
-    g11 = (1 - r1*r1) * costheta + r1*r1
-    g12 = r1 * r2 * (1 - costheta) + r3 * sintheta
-    g13 = r1 * r3 * (1 - costheta) - r2 * sintheta
-    g21 = r1 * r2 * (1 - costheta) - r3 * sintheta
-    g22 = (1 - r2*r2) * costheta + r2*r2
-    g23 = r2 * r3 * (1 - costheta) + r1 * sintheta
-    g31 = r1 * r3 * (1 - costheta) + r2 * sintheta
-    g32 = r2 * r3 * (1 - costheta) - r1 * sintheta
-    g33 = (1 - r3*r3) * costheta + r3*r3
+  zerorot = idmtx
+  toQuaternion = mat2quat
+  fromQuaternion r = let
+    Vec4 q0 q1 q2 q3 = quaterVec r
+    
+    g11 = q0*q0 + q1*q1 - q2*q2 - q3*q3
+    g12 = 2 * (q1 * q2 + q0 * q3)
+    g13 = 2 * (q1 * q3 - q0 * q2)
+    g21 = 2 * (q1 * q2 - q0 * q3)
+    g22 = q0*q0 - q1*q1 + q2*q2 - q3*q3
+    g23 = 2 * (q2 * q3 + q0 * q1)
+    g31 = 2 * (q1 * q3 + q0 * q2)
+    g32 = 2 * (q2 * q3 - q0 * q1)
+    g33 = q0*q0 - q1*q1 - q2*q2 + q3*q3
+
     in RotMatrix (Mat3 (Vec3 g11 g12 g13) (Vec3 g21 g22 g23) (Vec3 g31 g32 g33))
 
-getTheta :: Rodrigues -> Double
-getTheta (Rodrigues r) = 2 * atan (norm r)
+mat2quat :: RotMatrix -> Quaternion  
+mat2quat (RotMatrix m)
+  | q0 > 0 = let
+    q1 = (g23 - g32) / (4 * q0)
+    q2 = (g31 - g13) / (4 * q0)
+    q3 = (g12 - g21) / (4 * q0)
+    in mkUnsafeQuaternion $ Vec4 q0 q1 q2 q3
+  | q1_0 > q2_0 && q1_0 > q3_0 = let
+    v = Vec4 q0 q1_0 (sgn g21 q2_0) (sgn g31 q3_0)
+    in mkUnsafeQuaternion v
+  | q2_0 > q1_0 && q2_0 > q3_0 = let
+    v = Vec4 q0 (sgn g12 q1_0) q2_0 (sgn g32 q3_0)
+    in mkUnsafeQuaternion v
+  | otherwise = let
+    v = Vec4 q0 (sgn g13 q1_0) (sgn g23 q2_0) q3_0
+    in mkUnsafeQuaternion v
+  where
+    sgn ref x = if ref >= 0 then x else -x 
+    (Mat3 (Vec3 g11 g12 g13) (Vec3 g21 g22 g23) (Vec3 g31 g32 g33)) = m
+    q0 = 0.5 * (sqrt $ g11 + g22 + g33 + 1)
+    q1_0 = sqrt $ (g11 + 1) / 2
+    q2_0 = sqrt $ (g22 + 1) / 2
+    q3_0 = sqrt $ (g33 + 1) / 2
+                   
+-- ================================== Other functions ==================================
 
-toDeg :: Angle -> Angle
-toDeg deg@(Deg _) = deg
-toDeg (Rad theta) = Deg $ theta * (180 / pi)
-
-toRad :: Angle -> Angle
-toRad rad@(Rad _) = rad
-toRad (Deg theta) = Rad $ theta * (pi / 180)
-
+-- | Apply a rotation on quaternion.
+rotQuaternion :: Normal3 -> Double -> Quaternion
+rotQuaternion axis omega = Quaternion (Vec4 c (x*s) (y*s) (z*s))
+  where
+    Vec3 x y z = fromNormal axis 
+    half = 0.5 * omega
+    c = cos half
+    s = sin half
+  
+-- | This is shortest path interpolation in the space of rotations; however
+-- this is achieved by possibly flipping the first endpoint in the space of
+-- quaternions. Thus @slerpU 0.001 q1 q2@ may be very far from @q1@ (and very
+-- close to @negU q1@) in the space of quaternions (but they are very close
+-- in the space of rotations). 
+quaterInterpolation :: Double -> Quaternion -> Quaternion -> Quaternion
+quaterInterpolation t (Quaternion pa) (Quaternion pb) = Quaternion v
+  where
+    v = (p &* y) &+ (pb &* yb) 
+  
+    dab = pa &. pb  
+    (d, p) = if dab >= 0 
+             then ( dab,     pa)
+             else (-dab, neg pa)
+    
+    omega = acos d
+    s = sin omega
+    y  = sin (omega * (1-t)) / s 
+    yb = sin (omega *    t ) / s
+    
 -- | Scale a list of num in such way that the min non zero absolute value is 1.0
 aproxToIdealAxis :: Vec3 -> Double -> (Integer, Integer, Integer)
 aproxToIdealAxis (Vec3 x y z) err = let
@@ -196,115 +367,152 @@ aproxToIdealAxis (Vec3 x y z) err = let
       nzIntVaules = filter (/= 0) intValues
       mdc = foldr gcd 0 nzIntVaules
   in (x', y', z')
-
--- =========================== Quaternion functions ============================
-
-eulerToQuar :: Euler -> Quaternion
-eulerToQuar Euler{..} = Quaternion (q0, Vec3 q1 q2 q3)
-  where
-    dphi = (phi2 - phi1) / 2
-    aphi = (phi1 + phi2) / 2
-    s1 = sin (phi / 2)
-    c1 = cos (phi / 2)
-    q0 = (cos aphi) * c1
-    q1 = (sin dphi) * s1
-    q2 = (cos dphi) * s1
-    q3 = (sin aphi) * c1
-
-quarToEuler :: Quaternion -> Euler
-quarToEuler (Quaternion (q0, Vec3 q1 q2 q3)) = Euler
-  { phi1 = atan (q3 / q0) - atan (q1 / q2)
-  , phi  = 2 * (atan $ sqrt((q1 * q1 + q2 * q2) / (q3 * q3 + q0 * q0)))
-  , phi2 = atan (q3 / q0) + atan (q1 / q2) }
-
+     
 -- ================================ Show instances ===============================
 
 instance Show AxisPair where
   show (AxisPair (vec, theta)) = let
-    (x, y, z) = aproxToIdealAxis vec 0.05
-    in "< " ++ show x ++ ", " ++ show y ++
-       ", " ++ show z ++ " > " ++ (show $ toDeg $ Rad theta)
+    --(x, y, z) = aproxToIdealAxis vec 0.05
+    in showPretty vec ++ " @ " ++ (show $ (toAngle theta :: Deg))
+  
+instance Show Quaternion where
+  show (Quaternion v) = "Q" ++ showPretty v
 
 instance Show Rodrigues where
-  show (Rodrigues (Vec3 x y z)) = let
-    foo n = showEFloat (Just 1) n " "
-    in "FR(" ++ (foo x) ++ ", " ++ (foo y) ++
-       ", " ++ (foo z) ++ ")"
+  show (Rodrigues v) = "FR" ++ showPretty v
+  
+instance Show Euler where
+  show Euler{..} = let
+    foo a = show $ (toAngle a :: Deg)
+    in "Euler(" ++ foo phi1 ++ ", " ++ foo phi ++
+       ", " ++ foo phi2 ++ ")"
 
 instance Show RotMatrix where
-  show (RotMatrix m) = let
-    (Mat3 (Vec3 a11 a12 a13) (Vec3 a21 a22 a23) (Vec3 a31 a32 a33)) = m
-    foo x = showEFloat (Just 1) x " "
-    in "| " ++ foo a11 ++ "\t" ++ foo a12 ++ "\t" ++ foo a13 ++ " |\n" ++
-       "| " ++ foo a21 ++ "\t" ++ foo a22 ++ "\t" ++ foo a23 ++ " |\n" ++
-       "| " ++ foo a31 ++ "\t" ++ foo a32 ++ "\t" ++ foo a33 ++ " |\n"
-
-instance Show Angle where
+  show (RotMatrix m) = showPretty m
+  
+instance Show Deg where
   show (Deg theta) = showFFloat (Just 1) theta " deg"
+
+instance Show Rad where
   show (Rad theta) = showFFloat (Just 1) theta " rad"
 
 
+-- ================================== Test ======================================
+
 -- | Verify the correctness of this module
-checkRotationSystemModule :: IO ()
-checkRotationSystemModule = let
-  an = 90
-  a = toRodrigues $ mkAxisPair (Vec3 1 1 1) (Rad $ pi/3)
-  b = toRodrigues $ mkAxisPair (Vec3 0 0 1) (Rad $ pi/2)
-  c = toRodrigues $ mkAxisPair (Vec3 1 0 0) (Rad $ pi)
-  d = toRodrigues $ mkAxisPair (Vec3 0 (-1) (-1)) (Rad $ pi/2)
-  e = toRodrigues $ mkAxisPair (Vec3 (-1) 0 0) (Rad $ pi/4)
-  f = toRodrigues $ mkAxisPair (Vec3 1 0 0) (Rad 0)
-  g = toRodrigues $ mkEuler (Deg 0.0)  (Deg 54.7) (Deg 45.0)
-  h = toRodrigues $ mkEuler (Deg 30.0) (Deg 54.7) (Deg 45.0)
-  test = [a,b,c,d,e,f,g,h]
+testOrientationModule :: IO ()
+testOrientationModule = let
+  an = Deg 90
+  test =
+    [ toQuaternion $ mkAxisPair (Vec3 1 0 0) (Rad 0)
+    , toQuaternion $ mkAxisPair (Vec3 1 0 0) (Rad $ 0.5*pi)
+    , toQuaternion $ mkAxisPair (Vec3 0 1 0) (Rad $ 0.5*pi)
+    , toQuaternion $ mkAxisPair (Vec3 0 0 1) (Rad $ 0.5*pi)
+    , toQuaternion $ mkAxisPair (Vec3 1 1 1) (Rad $ 1.5*pi)
+    , toQuaternion $ mkAxisPair (Vec3 1 0 0) (Rad $ pi)
+    , toQuaternion $ mkEuler (Deg 0.0)  (Deg 54.7) (Deg 45.0)
+    , toQuaternion $ mkEuler (Deg 30.0) (Deg 54.7) (Deg 45.0)
+    ]
   in do
     putStrLn  "-- Checking RotationSystem module..."
     testAngleConv an
-    mapM testAxisPairConv test
-    --mapM testEulerConv test
-    mapM (\x -> mapM (foldRot x) test) test
-    mapM (\x -> mapM (foldMis x) test) test
-    putStrLn $ show $ (Rodrigues $ Vec3 (-1) 0 0) +@+ (Rodrigues $ Vec3 0 0.5 0)
-    putStrLn $ show $ toRodrigues $ (fromRodrigues $ Rodrigues (Vec3 0 0.5 0) :: RotMatrix) +@+ (fromRodrigues $ Rodrigues (Vec3 (-1) 0 0))
-    putStrLn $ "--- check end"
+    mapM_ showAll test
+    mapM_ testConv test
+    testComposition
+    testMisso
+    putStrLn $ "-- Checking end --"
 
-    where
+showAll :: Quaternion -> IO ()
+showAll q = do
+  putStrLn "------------------------------------------------"
+  putStrLn $ show (fromQuaternion q :: Quaternion)
+  putStrLn $ show (fromQuaternion q :: Rodrigues)
+  putStrLn $ show (fromQuaternion q :: AxisPair)
+  putStrLn $ show (fromQuaternion q :: Euler)
+  putStrLn $ show (fromQuaternion q :: RotMatrix)
+  putStrLn "\n"
+        
+testAngleConv :: Deg -> IO ()
+testAngleConv an = do
+  let
+    an1 = (toAngle $ fromAngle an) :: Deg
+  putStrLn "-- Angle convertion"
+  print $ an == an1
 
-        testAngleConv an = do
-            let a'  = toRad (Deg an)
-                a'' = toDeg $ toRad (Deg an)
-            putStrLn "\n-- Angle convertion"
-            putStrLn $ ">> " ++ show an ++ " -> " ++ show a' ++ " -> " ++ show a''
+testConv :: Quaternion -> IO ()
+testConv q = do
+  let
+    ap  = (fromQuaternion q)::AxisPair
+    qap = toQuaternion ap
+    e   = (fromQuaternion q)::Euler
+    qe  = toQuaternion e
+    r   = (fromQuaternion q) :: Rodrigues
+    qr  = toQuaternion r
+    m   = (fromQuaternion q) :: RotMatrix
+    qm  = toQuaternion m
+    outm  = show $ getOmega (q -@- qm)
+    outap = show $ getOmega (q -@- qap)
+    oute  = show $ getOmega (q -@- qe)
+    outr  = show $ getOmega (q -@- qr)
+  putStrLn "------------------------------------------------"
+  putStrLn $ "-- Quaternion: "           ++ show q
+  putStrLn $ "-- Euler conversion: "     ++ oute
+  putStrLn $ "-- AxisPair conversion: "  ++ outap
+  putStrLn $ "-- Rodrigues conversion: " ++ outr
+  putStrLn $ "-- RotMatrix conversion: " ++ outm
 
-        testAxisPairConv a = do
-            let a'  = (fromRodrigues a)::AxisPair
-                a'' = toRodrigues a'
-            putStrLn "\n-- AxisPair convertion"
-            putStrLn $ ">> " ++ show a ++ " -> " ++ show a' ++ " -> " ++ show a''
+testComposition :: IO ()
+testComposition = let
+  e1 = mkEuler (Deg 30) (Deg 0)  (Deg 0)
+  e2 = mkEuler (Deg 0)  (Deg 30) (Deg 0)
+  q1 = toQuaternion e1
+  q2 = toQuaternion e2
+  m1 = fromQuaternion q1 :: RotMatrix
+  m2 = fromQuaternion q2
+  a1 = fromQuaternion q1 :: AxisPair
+  a2 = fromQuaternion q2
+  r1 = fromQuaternion q1 :: Rodrigues
+  r2 = fromQuaternion q2
+  ce = e1 +@> e2
+  cq = q1 +@> q2
+  cm = m1 +@> m2
+  ca = a1 +@> a2
+  cr = r1 +@> r2
+        
+  in do
+    putStrLn $ "\n-- Testing composition "
+    putStrLn $ " Rotation e1 = " ++ show e1
+    putStrLn $ " followed by e2 = " ++ show e2
+    putStrLn $ " where e1 +@> e2 = Euler(30.0 deg, 30.0 deg, 0.0 deg)"
+    putStrLn $ " Results:"
+    putStrLn $ "Euler      => " ++ show ((fromQuaternion $ toQuaternion ce) :: Euler)
+    putStrLn $ "Quaternion => " ++ show ((fromQuaternion $ toQuaternion cq) :: Euler)
+    putStrLn $ "RotMatrix  => " ++ show ((fromQuaternion $ toQuaternion cm) :: Euler)
+    putStrLn $ "AxisPair   => " ++ show ((fromQuaternion $ toQuaternion ca) :: Euler)
+    putStrLn $ "Rodrigues  => " ++ show ((fromQuaternion $ toQuaternion cr) :: Euler)
+     
+testMisso :: IO ()
+testMisso = let
+  e1 = mkEuler (Deg 90) (Deg 0)  (Deg 0)
+  e2 = mkEuler (Deg 0)  (Deg 90) (Deg 0)
+  q1 = toQuaternion e1
+  q2 = toQuaternion e2
+  m   = q1 -@- q2
+  mi  = q2 -@- q1
+  cm  = q1 -#- q2
+  cmi = q2 -#- q1
 
-        testEulerConv a = do
-            let a'  = (fromRodrigues a)::Euler
-                a'' = toRodrigues a'
-            putStrLn "\n-- Euler convertion"
-            putStrLn $ ">> " ++ show a ++ " -> " ++ show a' ++ " -> " ++ show a''
-
-        foldRot::Rodrigues -> Rodrigues -> IO Rodrigues
-        foldRot a b = do
-            putStrLn "\n-- Compose rotation"
-            putStrLn $ ">> a = " ++ show ((fromRodrigues a)::AxisPair)
-            putStrLn $ ">> b = " ++ show ((fromRodrigues b)::AxisPair)
-            let c = a +@+ b
-            putStrLn $ ">> a.b (compose) = " ++ show ((fromRodrigues c)::AxisPair)
-            return c
-
-        foldMis::Rodrigues -> Rodrigues -> IO Rodrigues
-        foldMis a b = do
-            putStrLn "\n-- Compose misorientation"
-            putStrLn $ ">> a = " ++ show ((fromRodrigues a)::AxisPair)
-            putStrLn $ ">> b = " ++ show ((fromRodrigues b)::AxisPair)
-            let c = a -@- b
-            putStrLn $ ">> a[-1].b (compose) = " ++ show ((fromRodrigues c)::AxisPair)
-            return c
-
+  testm =  q1 +@> (q2 -#- q1)
+        
+  in do
+    putStrLn $ "\n-- Testing missorientations."
+    putStrLn $ " Rotation e1 = " ++ show e1
+    putStrLn $ " Rotation e2 = " ++ show e2
+    putStrLn $ " Results:"
+    putStrLn $ " e1 -@- e2 => " ++ show ((fromQuaternion $ toQuaternion m)   :: AxisPair)
+    putStrLn $ " e2 -@- e1 => " ++ show ((fromQuaternion $ toQuaternion mi)  :: AxisPair)
+    putStrLn $ " e1 -#- e2 => " ++ show ((fromQuaternion $ toQuaternion cm)  :: AxisPair)
+    putStrLn $ " e2 -#- e1 => " ++ show ((fromQuaternion $ toQuaternion cmi) :: AxisPair)
+    putStrLn $ " e1 +@> (e2 -#- e1) == e2 == " ++ show ((fromQuaternion testm) :: Euler)
 
 
