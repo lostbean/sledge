@@ -15,7 +15,8 @@ module Hammer.Texture.Bingham
 
        , computeF
        , renderBingham
-       , renderFull
+       , renderBinghamOmega
+       , renderBinghamToEuler
        , writeQuater
        ) where
 
@@ -260,7 +261,7 @@ multiNormalPDF z cv qmu qx = let
 
 -- ====================================== Plot Space ===========================================
 
-sphere :: Int -> Int -> (Vector Vec3, Vector (Int, Int, Int, Int)) 
+sphere :: Int -> Int -> (Vector Vec3, Vector SphereCell) 
 sphere nPhi nTheta
   | nPhi   < 3 = sphere 3 nTheta
   | nTheta < 3 = sphere nPhi 3
@@ -287,19 +288,35 @@ sphere nPhi nTheta
     llm = V.fromList [ V.enumFromN ((n-1) * nPhi + 1) nPhi | n <- [1..nTheta-1] ]
     ll  = ll0 `V.cons` llm `V.snoc` lln
 
-    mkMesh :: Vector (Vector Int) -> Vector (Int, Int, Int, Int)
+    mkMesh :: Vector (Vector Int) -> Vector SphereCell
     mkMesh vl = V.ifoldl' (\acc i l -> acc V.++ mkStrip l (vl V.! (i+1))) V.empty (V.init vl) 
     mkStrip l1 l2 = let
-      func i a b = (b, l2 V.! (i+1), l1 V.! (i+1), a)
-      merge = (V.head l2, V.head l1, V.last l1, V.last l2)
+      func i a b = SphereCell (b, l2 V.! (i+1), l1 V.! (i+1), a)
+      merge      = SphereCell (V.head l2, V.head l1, V.last l1, V.last l2)
       in merge `V.cons` V.izipWith func (V.init l1) (V.init l2)
 
-instance RenderCell (Int, Int, Int, Int) where
-  makeCell (a,b,c,d) = U.fromList [a,b,c,d]
-  getType _          = VTK_QUAD
+-- local instance to avoid conflict when exported. 
+newtype SphereCell = SphereCell (Int, Int, Int, Int)
 
-renderBingham :: Bingham -> Int -> Double -> VTK Vec3
-renderBingham dist n omega = let
+instance RenderCell SphereCell where
+  makeCell (SphereCell (a, b, c, d)) = U.fromList [a, b, c, d]
+  getType _                          = VTK_QUAD
+
+renderSphereVTK :: (Vector Vec3, Vector SphereCell) -> VTK Vec3
+renderSphereVTK (ps, quads) = mkUGVTK "hypersphere" (V.convert ps) quads
+
+renderPoints :: [Quaternion] -> VTK Vec3
+renderPoints lq = let
+  (pos, omega) = V.unzip . V.map (axisAngle . fromQuaternion) $ V.fromList lq
+  pids = V.enumFromN (0 :: Int) (V.length pos)
+  vtk  = mkUGVTK "samples" (V.convert pos) pids
+  attr = mkPointAttr ("Omegas") (\a _ -> (omega) V.! a)
+  in addDataPoints vtk attr
+
+-- | Render one sphere with n divisions of a the Bingham distribution at
+-- a fixed rotation angle (Omega ~ [0 .. 2*pi]).
+renderBinghamOmega :: Bingham -> Int -> Double -> VTK Vec3
+renderBinghamOmega dist n omega = let
   mesh@(ps, _) = sphere n n
   vtk          = renderSphereVTK mesh
   attr         = mkPointAttr "intensity" (\a _ -> intensity V.! a)
@@ -307,11 +324,9 @@ renderBingham dist n omega = let
   intensity    = V.map (binghamPDF dist . axis2q) ps
   in addDataPoints vtk attr
 
-renderSphereVTK :: (Vector Vec3, Vector (Int, Int, Int, Int)) -> VTK Vec3
-renderSphereVTK (ps, quads) = mkUGVTK "hypersphere" (V.convert ps) quads
-
-renderFull :: Bingham -> Int -> VTK Vec3
-renderFull dist n = let
+-- | Render one sphere with n divisions of a the Bingham distribution.
+renderBingham :: Bingham -> Int -> VTK Vec3
+renderBingham dist n = let
   step   = pi / fromIntegral n
   vtk    = renderSphereVTK mesh
   omegas = V.generate n ((step *) . fromIntegral)
@@ -323,23 +338,31 @@ renderFull dist n = let
      -- foldl crashs
      -- in V.foldr (\o acc -> addDataPoints acc (attr o)) vtk omegas
 
-renderPoints :: [Quaternion] -> VTK Vec3
-renderPoints lq = let
-  (pos, omega) = V.unzip . V.map (axisAngle . fromQuaternion) $ V.fromList lq
-  pids = V.enumFromN (0 :: Int) (V.length pos)
-  vtk  = mkUGVTK "samples" (V.convert pos) pids
-  attr = mkPointAttr ("Omegas") (\a _ -> (omega) V.! a)
+-- | Render the PDF of a Bingham distribution in the Euler space.
+renderBinghamToEuler :: (Angle a, Num a)=> a -> (Int, Int, Int) -> Bingham -> VTK Double
+renderBinghamToEuler step (np1, np, np2) dist = let
+  start = toAngle 0
+  angs = V.enumFromStepN start step (max np1 (max np np2))
+  eu   = [ mkEuler (angs V.! i) (angs V.! j) (angs V.! k) | i <- [0 .. np1-1]
+                                                          , j <- [0 .. np -1]
+                                                          , k <- [0 .. np2-1]]
+  inte = V.map (binghamPDF dist . toQuaternion) (V.fromList eu)
+  orig = (fromAngle start, fromAngle start, fromAngle start)
+  spc  = (fromAngle step,  fromAngle step,  fromAngle step)
+  vtk  = mkSPVTK "Euler_ODF" (np1, np, np2) orig spc
+  attr = mkPointAttr "PDF" (\i _ -> inte V.! i)
   in addDataPoints vtk attr
+
 
 -- ====================================== Test ===========================================
 
-writeQuater :: String -> VTK Vec3 -> IO ()
+writeQuater :: (RenderElemVTK a)=> String -> VTK a -> IO ()
 writeQuater name = writeUniVTKfile ("/home/edgar/Desktop/" ++ name ++ ".vtu")
 
 testSample :: Int -> IO ()
 testSample n = let
   d1 = (1, mkQuaternion (Vec4 0 0 1 0))
-  d2 = (6, mkQuaternion (Vec4 0 1 0 0))
+  d2 = (3, mkQuaternion (Vec4 0 1 0 0))
   d3 = (6, mkQuaternion (Vec4 0 0 0 1))
   dist = mkBingham d1 d2 d3
   in do
@@ -347,8 +370,9 @@ testSample n = let
      putStrLn $ show dist
      putStrLn $ showPretty $ scatter dist
      putStrLn $ showPretty $ measureCovariance a
-     writeQuater "BingPDF" $ renderFull dist 20
+     writeQuater "BingPDF" $ renderBingham dist 20
      writeQuater "BingSamples" $ renderPoints a
+     writeQuater "EulerPDF" $ renderBinghamToEuler (Deg 5) (72, 36, 72) dist
 
 testDist :: Bingham
 testDist = let
