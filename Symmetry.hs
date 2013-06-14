@@ -21,6 +21,8 @@ module Hammer.Texture.Symmetry
        , mkSymmOps
        , getSymmOps
        , SymmOp (symmOp)
+       , getAllSymmVec
+       , getUniqueSymmVecs
        ) where
 
 import qualified Data.Vector as V
@@ -150,3 +152,30 @@ getOmegaMinPodal x
   | w > pi    = abs (w - 2*pi)
   | otherwise = w
   where w = getOmega x
+
+-- | Calculates all the symmetric equivalents of a given vector. The calculation is done
+-- by passive rotations (changes of base)
+getAllSymmVec :: Symm -> Vec3 -> Vector Vec3
+getAllSymmVec symm vec = let
+  syops = getSymmOps symm
+  in V.map (passiveVecRotation vec . symmOp) syops
+
+-- | Calculates all the /unique/ (non-repeated) symmetric equivalents of a given vector.
+-- The calculation is done by filtering the output of 'getAllSymmVec'.
+getUniqueSymmVecs :: Symm -> Vec3 -> Vector Vec3
+getUniqueSymmVecs symm v = nubVec $ getAllSymmVec symm v
+
+-- | Get a list of /unique/ vectors by filtering the repeated ones.
+nubVec :: (DotProd a)=> Vector a -> Vector a
+nubVec l = let
+  func (acc, v)
+    | V.null v  = acc
+    | isInLoop  = func (h `V.cons` acc, V.tail v)
+    | otherwise = func (h `V.cons` acc, rest)
+    where
+      h    = V.head v
+      lh   = normsqr h
+      rest = V.filter notEqual v
+      isInLoop   = V.length v == V.length rest
+      notEqual x = abs (h &. x - lh) > 1e-10
+  in func (V.empty, l)
