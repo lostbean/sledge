@@ -6,13 +6,13 @@
 -- Module      : Hammer.Texture.Symmetry
 -- Copyright   : (c) 2013 Edgar Gomes
 -- License     : Privete-style (see LICENSE)
--- 
+--
 -- Maintainer  : Edgar Gomes <talktoedgar@gmail.com>
 -- Stability   : experimental
 -- Portability : tested on GHC only
--- 
+--
 -- Module to calculate symmetry in crystal orientations.
--- 
+--
 module Hammer.Texture.Symmetry
        ( Symm (..)
        , toFZ
@@ -28,7 +28,7 @@ module Hammer.Texture.Symmetry
 import qualified Data.Vector as V
 
 import           Data.Vector    (Vector)
-  
+
 import           Data.List
 import           Hammer.Math.Algebra
 import           Hammer.Texture.Orientation
@@ -52,20 +52,20 @@ newtype SymmOp =
 getSymmOps :: Symm -> Vector SymmOp
 getSymmOps sym = case sym of
   (Custom _ xs) -> V.fromList xs
-  
+
   Hexagonal -> V.concat
     [ mkSymmOps (Vec3   1    0    0 ) 1  -- id rotation
-      
+
     , mkSymmOps (Vec3   0    0    1 ) 6
-      
+
     , mkSymmOps (Vec3   1    1    1 ) 3
     , mkSymmOps (Vec3   1  (-1)   1 ) 3
     , mkSymmOps (Vec3   1    1  (-1)) 3
     , mkSymmOps (Vec3 (-1)   1    1 ) 3 ]
-                            
+
   Cubic -> V.concat
     [ mkSymmOps (Vec3   1    0    0 ) 1  -- id rotation
-      
+
     , mkSymmOps (Vec3   0    0    1 ) 4
     , mkSymmOps (Vec3   0    1    0 ) 4
     , mkSymmOps (Vec3   1    0    0 ) 4
@@ -76,7 +76,7 @@ getSymmOps sym = case sym of
     , mkSymmOps (Vec3 (-1)   1    0 ) 2
     , mkSymmOps (Vec3 (-1)   0    1 ) 2
     , mkSymmOps (Vec3   0  (-1)   1 ) 2
-                 
+
     , mkSymmOps (Vec3   1    1    1 ) 3
     , mkSymmOps (Vec3   1    1  (-1)) 3
     , mkSymmOps (Vec3   1  (-1)   1 ) 3
@@ -121,7 +121,7 @@ toFZQuaternion symm = getInFZ (getSymmOps symm)
 -- and 'Quaternion'), which means that a rotation of @271 deg@ clockwise
 -- is the same as a rotation of @90 deg@ anti-clockwise on the opposite
 -- direction.
--- 
+--
 -- Internally any orientation is converted to 'Quaternion' for the fundamental
 -- zone calculation. Operations in 'Quaternion' is optimized to reduce
 -- calculation operations.
@@ -130,8 +130,8 @@ toFZ symm = fromQuaternion . toFZQuaternion symm . toQuaternion
 
 
 -- | Finds the symmetric equivalent orientation that belongs to the Fundamental
--- Zone given a symmetric group and one orientation. 
--- 
+-- Zone given a symmetric group and one orientation.
+--
 -- Internally the rotation composition ('+\@>') is performed directly for its
 -- rotation type without any conversion to 'Quaternion'. Note this operation isn't
 -- optimized since it calculates the whole rotation composition before calculating
