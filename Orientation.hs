@@ -27,18 +27,22 @@
 --  * Orientation Library Manual by Romain Quey
 -- 
 module Hammer.Texture.Orientation
-       ( Quaternion (quaterVec)
+       ( RefFrame (..)
+       , Quaternion (quaterVec)
        , mkUnsafeQuaternion
        , mkQuaternion
        , splitQuaternion
        , unsafeMergeQuaternion
        , mergeQuaternion
        , antipodal
+       , activeVecRotation
+       , passiveVecRotation
        , Rot        (..)
        , composeOmega
        , Angle      (..) 
        , Deg        (..)
        , Rad        (..)
+       , toDeg
        , Euler      (phi1, phi, phi2)
        , mkEuler
        , AxisPair   (axisAngle)
@@ -58,6 +62,19 @@ import Debug.Trace
 dbg s x = trace (s ++ show x) x
 
 -- ==================================  Types ====================================
+
+-- | External reference frame.
+--
+--  * RD -> x direction
+--
+--  * TD -> y direction
+--
+--  * ND -> z direction
+--
+data RefFrame = ND
+              | TD
+              | RD
+              deriving (Show, Eq)
 
 -- | Unit quaternion representation of orientation (rotation).
 -- It is the basic and central representation used in this module.
@@ -122,6 +139,10 @@ instance Angle Deg where
 instance Angle Rad where
   toAngle   = Rad
   fromAngle = unRad 
+
+-- | Converts a value in radians to 'Deg'. It is the same as 'toAngle' for a 'Deg' type.
+toDeg :: Double -> Deg
+toDeg = toAngle
 
 -- ===============================  Data constructors =================================
 
@@ -380,15 +401,28 @@ composeOmega p q = let
 antipodal :: Quaternion -> Quaternion
 antipodal = mkUnsafeQuaternion . neg . quaterVec
 
--- | Apply a rotation on quaternion.
-rotQuaternion :: Normal3 -> Double -> Quaternion
-rotQuaternion axis omega = Quaternion (Vec4 c (x*s) (y*s) (z*s))
-  where
-    Vec3 x y z = fromNormal axis 
-    half = 0.5 * omega
-    c = cos half
-    s = sin half
-  
+-- | Apply a /active/ rotation on vector by quaternion. The vector is rotated around the
+-- quaternion axis.
+activeVecRotation :: Vec3 -> Quaternion -> Vec3
+activeVecRotation v q = let
+  (q0, qv) = splitQuaternion q
+  qvl = normsqr qv
+  k1 = (q0*q0 - qvl) *& v
+  k2 = (2 * (v &. qv)) *& qv
+  k3 = (2 * q0) *& (qv &^ v)
+  in k1 &+ k2 &+ k3
+
+-- | Apply a /passive/ rotation (change of basis) on vector by quaternion. The passive
+-- rotation returns the equivalent input vector in the reference frame (basis) rotated by
+-- the quaternion.
+passiveVecRotation :: Vec3 -> Quaternion -> Vec3
+passiveVecRotation v q = let
+  (q0, qv) = splitQuaternion q
+  k1 = (2*q0*q0 - 1) *& v
+  k2 = (2 * (v &. qv)) *& qv
+  k3 = (2 * q0) *& (v &^ qv)
+  in k1 &+ k2 &+ k3
+
 -- | This is shortest path interpolation in the space of rotations; however
 -- this is achieved by possibly flipping the first endpoint in the space of
 -- quaternions. Thus @slerpU 0.001 q1 q2@ may be very far from @q1@ (and very
