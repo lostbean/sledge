@@ -360,17 +360,6 @@ mat2quat (RotMatrix m)
                    
 -- ================================== Other functions ==================================
 
--- Don't expot
--- | Safe version of 'acos' function where its boudaries (@1@ and @-1@) acepts a small
--- truncation error like @1.00000000000001@ instead of returning @NaN@. The value is
--- round to the closest valid boundary.  
-acosSafe :: (Floating a, Ord a)=> a -> a
-acosSafe x
-  -- error limmit 1e-12
-  | x >  1 && x < ( 1.000000000001) = acos 1
-  | x < -1 && x > (-1.000000000001) = acos (-1)
-  | otherwise                       = acos x
-{-# INLINE acosSafe #-}
 
 -- | Fast calculation of a rotation angle after rotation comosition. The return angle in radians
 -- is the absolute minimum angle between both antipodal rotations. The composition is equivalent
