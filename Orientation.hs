@@ -58,6 +58,7 @@ import Data.Ratio
 import Numeric
 
 import Hammer.Math.Algebra
+import System.Random
 
 import Debug.Trace
 dbg s x = trace (s ++ show x) x
@@ -83,6 +84,18 @@ newtype Quaternion =
   Quaternion
   { quaterVec :: Vec4
   } deriving (Eq)
+
+instance Random Quaternion where
+  random             = randomR (zerorot, zerorot)
+  randomR (_, _) gen = let
+    (Vec3 x y z, gen1) = randomR (zero, Vec3 1 1 1) gen
+    -- Following : K. Shoemake., Uniform random rotations.
+    -- In D. Kirk, editor, Graphics Gems III, pages 124-132. Academic, New York, 1992.
+    q0 = sqrt(1-x) * sin (2 * pi * y)
+    q1 = sqrt(1-x) * cos (2 * pi * y)
+    q2 = sqrt(x)   * sin (2 * pi * z)
+    q3 = sqrt(x)   * cos (2 * pi * z)
+    in (mkQuaternion $ Vec4 q0 q1 q2 q3, gen1)
 
 -- | Angles in degrees.
 newtype Deg = Deg { unDeg :: Double } deriving (Eq, Num, Ord)
