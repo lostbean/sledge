@@ -31,16 +31,18 @@
 -- (e.g. @red = alphaBR/alphaRG@ and @blue = alphaGB/alphaRG@).
 --
 module Hammer.Texture.IPF
-       ( IPFBase
-       , getIPFSchema
-       , invPole
-       , ipfColor
+       ( invPole
        , getIPFColor
        , getIPFColorNoFZ
        , genIPFLegend
+       , getRGBColor
+       , RGBColor       (..)
+       , RGBDoubleColor (..)
        ) where
 
-import qualified Data.Vector                     as V
+import qualified Data.Vector as V
+
+import           Data.Word   (Word8)
 
 import           System.Random
 
@@ -54,7 +56,11 @@ import           Hammer.Texture.Symmetry
 
 -- =======================================================================================
 
-type RGBColor = (Double, Double, Double)
+newtype RGBDoubleColor = RGBDoubleColor (Double, Double, Double)
+
+newtype RGBColor  = RGBColor  (Word8, Word8, Word8)
+
+newtype AngularDist = AngularDist (Double, Double, Double)
 
 -- | Each color (Red, Green and Blue) is associated with a linear independent direction.
 -- The 'IPFBase' is the set of three planes that contains two of the three reference
@@ -99,20 +105,27 @@ invPole refdir = mkNormal . case refdir of
     -- crystal frame ) axis.
     m = inverse . rotMat . fromQuaternion
 
-colorAdjust :: RGBColor -> RGBColor
-colorAdjust (r,g,b) = (adj r, adj g, adj b)
+colorAdjust :: RGBDoubleColor -> RGBDoubleColor
+colorAdjust (RGBDoubleColor (r,g,b)) = RGBDoubleColor (adj r, adj g, adj b)
   where adj x = 0.15 + 0.85 * x
 
+getRGBColor :: RGBDoubleColor -> RGBColor
+getRGBColor (RGBDoubleColor (r,g,b)) = let
+  ru = round $ r * 255
+  gu = round $ g * 255
+  bu = round $ b * 255
+  in RGBColor (ru, gu, bu)
+
 -- | Calculates the IPF color of a pole direction in a certain symmetry group.
-ipfColor :: (Double, Double, Double) -> RGBColor
-ipfColor (angleB, angleR, angleG)
-  | angleR > angleG && angleR > angleB = (1, angleG / angleR, angleB / angleR)
-  | angleG > angleR && angleG > angleB = (angleR / angleG, 1, angleB / angleG)
-  | otherwise                          = (angleR / angleB, angleG / angleB, 1)
+ipfColor :: AngularDist -> RGBDoubleColor
+ipfColor (AngularDist (angleB, angleR, angleG))
+  | angleR > angleG && angleR > angleB = RGBDoubleColor (1, angleG / angleR, angleB / angleR)
+  | angleG > angleR && angleG > angleB = RGBDoubleColor (angleR / angleG, 1, angleB / angleG)
+  | otherwise                          = RGBDoubleColor (angleR / angleB, angleG / angleB, 1)
 
 -- | Calculates the IPF color in one reference frame directions for a given orientation
 --  represented in quaternion and its symmetry group.
-getIPFColor :: Symm -> RefFrame -> Quaternion -> (Normal3, RGBColor)
+getIPFColor :: Symm -> RefFrame -> Quaternion -> (Normal3, RGBDoubleColor)
 getIPFColor symm ref q = let
   n         = invPole ref q
   (fzn, as) = findMinAngleBase symm n
@@ -120,7 +133,7 @@ getIPFColor symm ref q = let
 
 -- | Calculates the IPF color in one reference frame directions for a given orientation
 --  represented in quaternion and its symmetry group.
-getIPFColorNoFZ :: Symm -> RefFrame -> Quaternion -> (Normal3, RGBColor)
+getIPFColorNoFZ :: Symm -> RefFrame -> Quaternion -> (Normal3, RGBDoubleColor)
 getIPFColorNoFZ symm ref q = let
   n       = invPole ref q
   (_, as) = findMinAngleBase symm n
@@ -129,25 +142,25 @@ getIPFColorNoFZ symm ref q = let
 -- | Finds the set of angles between a given direction and the planes of an 'IPFBase'. The
 -- returned angles between the direction @v@ and the planes are in radians and in the
 -- following order: @(v <-> plane RG, v <-> plane GB, v <-> plane BR)@
-findAnglesBase :: Normal3 -> IPFBase -> (Double, Double, Double)
+findAnglesBase :: Normal3 -> IPFBase -> AngularDist
 findAnglesBase v IPFBase{..} = let
   func plane x
     | alpha > 0.5 * pi = alpha - 0.5 * pi
     | otherwise        = 0.5 * pi - alpha
     where alpha = angle' plane x
-  in (func planeRG v, func planeGB v, func planeBR v)
+  in AngularDist (func planeRG v, func planeGB v, func planeBR v)
 
 -- | Finds the minimum set of angles between a given direction and all symmetric planes of
 -- 'IPFBase'. The returned angles between the direction @v@ and the planes are in radians
 -- and in the following order: @(v <-> plane RG, v <-> plane GB, v <-> plane BR)@
-findMinAngleBase :: Symm -> Normal3 -> (Normal3, (Double, Double, Double))
+findMinAngleBase :: Symm -> Normal3 -> (Normal3, AngularDist)
 findMinAngleBase symm x = let
   base   = getIPFSchema symm
   symmX  = V.map mkNormal $ getAllSymmVec symm $ fromNormal x
   ibase  = V.minIndex $ V.map (angDist . (flip findAnglesBase) base) symmX
   finalX = symmX V.! ibase
   alphas = findAnglesBase finalX base
-  angDist (a1, a2, a3) = a1*a1 + a2*a2 + a3*a3
+  angDist (AngularDist (a1, a2, a3)) = a1*a1 + a2*a2 + a3*a3
   in (finalX , alphas)
 
 genIPFLegend :: FilePath -> Int -> IO ()
@@ -158,6 +171,6 @@ genIPFLegend name n = do
     (ns, cs) = V.unzip $ V.map (getIPFColor Cubic ND) qs
     sps      = getBothProj $ V.map lambertSO3Proj ns
     out      = V.zipWith func sps cs
-    func (Vec2 x y) (r, g, b) = show x ++ " " ++ show y ++ " " ++
-                                show r ++ " " ++ show g ++ " " ++ show b
+    func (Vec2 x y) (RGBDoubleColor (r, g, b)) =
+      show x ++ " " ++ show y ++ " " ++ show r ++ " " ++ show g ++ " " ++ show b
   writeFile name (unlines $ V.toList out)
