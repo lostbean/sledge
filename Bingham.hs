@@ -357,7 +357,7 @@ renderBinghamToEuler step (np1, np, np2) dist = let
 -- ====================================== Test ===========================================
 
 writeQuater :: (RenderElemVTK a)=> String -> VTK a -> IO ()
-writeQuater name = writeUniVTKfile ("/home/edgar/Desktop/" ++ name ++ ".vtu")
+writeQuater name = writeUniVTKfile ("/home/edgar/Desktop/" ++ name ++ ".vtu") True
 
 testSample :: Int -> IO ()
 testSample n = let
