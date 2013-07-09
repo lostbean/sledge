@@ -14,16 +14,20 @@
 -- This module defines SO3 sphere projections.
 --
 module Hammer.Texture.SphereProjection
-       ( lambertSO3Proj
+       ( SO3Proj
+       , lambertSO3Proj
        , steroSO3Proj
+       , so3ProjCoord
+       , isUpperSO3
+       , isLowerSO3
        , getLowerProj
        , getUpperProj
        , getBothProj
        ) where
 
-import qualified Data.Vector                as V
+import qualified Data.Vector as V
 
-import           Data.Vector                  (Vector)
+import           Data.Vector (Vector)
 
 import           Hammer.Math.Algebra
 
@@ -40,43 +44,40 @@ data SO3Proj =
 -- the angle to @ND@ axis.
 lambertSO3Proj :: Normal3 -> SO3Proj
 lambertSO3Proj n
-  | z < 0     = LowerSO3 $ Vec2 (-k * x) (-k * y)
-  | otherwise = UpperSO3 $ Vec2 (k  * x) (k  * y)
+  | z < 0     = LowerSO3 $ Vec2  (k * x)  (k * y)
+  | otherwise = UpperSO3 $ Vec2 (-k * x) (-k * y)
   where
     Vec3 x y z = fromNormal n
-    k          = sqrt(2 / (1 + abs z))
+    -- max. radius corrected to 1
+    k          = sqrt(1 / (1 + abs z))
 
 -- | Sterographic transformation from SO3 to R2. In spherical coordenates @(theta, omega)
 -- => (theta, 2*tan(omega/2))@ where theta is the azimuthal angle to @RD@ axis and omega
 -- is the angle to @ND@ axis.
 steroSO3Proj :: Normal3 -> SO3Proj
 steroSO3Proj n
-  | z < 0     = LowerSO3 $ Vec2 (-k * x) (-k * y)
-  | otherwise = UpperSO3 $ Vec2 (k  * x) (k  * y)
+  | z < 0     = LowerSO3 $ Vec2  (k * x)  (k * y)
+  | otherwise = UpperSO3 $ Vec2 (-k * x) (-k * y)
   where
     Vec3 x y z = fromNormal n
     k          = (1 / (1 + abs z))
 
+so3ProjCoord :: SO3Proj -> Vec2
+so3ProjCoord (UpperSO3 x) = x
+so3ProjCoord (LowerSO3 x) = x
+
+isUpperSO3 :: SO3Proj -> Bool
+isUpperSO3 (UpperSO3 _) = True
+isUpperSO3 _            = False
+
+isLowerSO3 :: SO3Proj -> Bool
+isLowerSO3 = not . isUpperSO3
+
 getBothProj :: Vector SO3Proj -> Vector Vec2
-getBothProj = let
-  both (UpperSO3 x) = x
-  both (LowerSO3 x) = x
-  in V.map both
+getBothProj = V.map so3ProjCoord
 
 getLowerProj :: Vector SO3Proj -> Vector Vec2
-getLowerProj = let
-  isUpper (UpperSO3 _) = True
-  isUpper _            = False
-  in V.map (\(UpperSO3 x) -> x) . V.filter isUpper
+getLowerProj = V.map so3ProjCoord . V.filter isLowerSO3
 
 getUpperProj :: Vector SO3Proj -> Vector Vec2
-getUpperProj = let
-  isUpper (UpperSO3 _) = True
-  isUpper _            = False
-  in V.map (\(UpperSO3 x) -> x) . V.filter isUpper
-
--- Get the maximum distance form origin (max. radius) of a given projection.
---getSO3ProjMaxDist :: SphereProjection -> Double
---getSO3ProjMaxDist projType = case projType of
---  Lambert      _ -> sqrt (2)
---  Sterographic _ -> 1
+getUpperProj = V.map so3ProjCoord . V.filter isUpperSO3
