@@ -10,14 +10,19 @@ module Hammer.Texture.Bingham
        , concentrations
        , directions
        , normalization
+       , bingMode
+       , scatter
+
+         -- * Main functions
        , mkBingham
        , binghamPDF
+       , binghamMode
+       , sampleBingham
 
-       , computeF
+         -- * Render Bingham distribution
        , renderBingham
        , renderBinghamOmega
        , renderBinghamToEuler
-       , writeQuater
        ) where
 
 import qualified Data.List           as L
@@ -27,14 +32,14 @@ import qualified Data.Vector.Unboxed as U
 import           Control.Applicative ((<$>))
 import           Data.Vector         (Vector)
 import           System.Random       (randomIO)
-  
+
 import           Math.Gamma
 
 import           Hammer.Math.Algebra
 import           Hammer.Texture.Orientation
 import           Hammer.Texture.BinghamNormalization
 import           Hammer.Render.VTK.VTKRender
-  
+
 --import           Debug.Trace
 --dbg s x = trace (s L.++ show x) x
 
@@ -60,7 +65,7 @@ data DistDir =
 data Bingham =
   Bingham
   { concentrations :: Vec3        -- ^ concentration values for each directions where
-                                  -- z1 <= z2 <= z3 <= (z4 = 0) 
+                                  -- z1 <= z2 <= z3 <= (z4 = 0)
   , directions     :: DistDir     -- ^ unitary vectors Vx in rows
   , normalization  :: Double      -- ^ normalization factor F
   , bingMode       :: Quaternion  -- ^ mode of the distribution
@@ -93,7 +98,7 @@ binghamPDF Bingham{..} q = let
   v = quaterVec q
   k = concentrations &. (mapVec (\x->x*x) $ directions |> v)
   in exp k / normalization
-     
+
 -- =================================== Statistics ======================================
 
 scatterMatrix :: Double -> DistDir -> Vec3 -> DFDzx -> Quaternion -> Mat4
@@ -115,12 +120,12 @@ cutDistDir DistDir{..} n
   | n == 2    = (mkMat cut2, mkVec _3)
   | otherwise = (mkMat cut3, mkVec _4)
   where
-    mkMat f = Mat3 (f v1) (f v2) (f v3) 
-    mkVec f = Vec3 (f v1) (f v2) (f v3) 
+    mkMat f = Mat3 (f v1) (f v2) (f v3)
+    mkVec f = Vec3 (f v1) (f v2) (f v3)
     cut0 (Vec4 _ b c d) = Vec3 b c d
     cut1 (Vec4 a _ c d) = Vec3 a c d
     cut2 (Vec4 a b _ d) = Vec3 a b d
-    cut3 (Vec4 a b c _) = Vec3 a b c 
+    cut3 (Vec4 a b c _) = Vec3 a b c
 
 -- | Find the mode of a bingham distribution. The normalized mode is
 -- the quaternion orthogonal to all distbution directions @DistDir@.
@@ -140,16 +145,16 @@ binghamMode directions = let
     | otherwise = Vec4 xa xb xc 1
   in mkQuaternion x
 
--- =========================================== Sampling ===========================================
+-- ======================================== Sampling =====================================
 
 -- | Metroplis-Hastings sampler for the Bingham distribution
 sampleBingham :: Bingham -> Int -> IO [Quaternion]
 sampleBingham dist@Bingham{..} n = func [] ti pi qi burn 0
   where
-    burn = -20
     (v, conc) = symmEigen scatter
-    z  = vecMap sqrt conc
-  
+    burn      = -20
+    z         = vecMap sqrt conc
+
     qi = bingMode
     ti = binghamPDF dist qi        -- target
     pi = centralGaussianPDF z v qi -- proposal
@@ -163,19 +168,19 @@ sampleBingham dist@Bingham{..} n = func [] ti pi qi burn 0
         out rnd
           -- trace ("> ratio = " ++ show (fromIntegral accepted / fromIntegral count))
           | count > n = return $  acc
-                        
+          -- burn-in (training samples)
           | count < 0 &&
-            a > rnd   = func       acc  t  p  q (count+1)  accepted    -- burn-in (training samples)
-          | count < 0 = func       acc  t0 p0 q0 (count+1) accepted    -- burn-in (training samples)
-                        
+            a > rnd   = func       acc  t  p  q  (count+1) accepted
+          | count < 0 = func       acc  t0 p0 q0 (count+1) accepted
+
           | a > rnd   = func (q  : acc) t  p  q  (count+1) (accepted+1)
           | otherwise = func (q0 : acc) t0 p0 q0 (count+1)  accepted
       random01 >>= out
-  
+
 -- | Sample a value between [0,1] from a uniform distribution.
 random01 :: IO Double
 random01 = abs <$> randomIO
-           
+
 measureMean :: [Quaternion] -> Vec4
 measureMean [] = zero
 measureMean l = let
@@ -192,10 +197,10 @@ measureCovariance l = let
   in w &* (1 / n)
 
 -- | Inverse of error function.
-invERF :: Double -> Double 
+invERF :: Double -> Double
 invERF x
   | x < 0     = -invERF (-x)
-  | otherwise = let 
+  | otherwise = let
     a = 0.147
     y1 = (2 / (pi * a) + log (1 - x * x) / 2)
     y2 = sqrt (y1 * y1 - ( 1 / a) * log (1 - x * x))
@@ -230,10 +235,10 @@ quaternionNormalRand :: Vec4 -> Mat4 -> Quaternion -> IO Quaternion
 quaternionNormalRand z cv q = let
   foo = mkQuaternion . (&+ quaterVec q)
   in foo <$> multiNormalRand z cv
-  
+
 -- | Compute an angular central gaussian pdf in principal components form for
 -- a zero-mean distribution. Uses the eigenvectors and eigenvalues to calculate
--- of the inverse of the covariance matrix. 
+-- of the inverse of the covariance matrix.
 centralGaussianPDF :: Vec4 -> Mat4 -> Quaternion -> Double
 centralGaussianPDF z cv qx = let
   inte = vecFoldr (*) z
@@ -246,7 +251,7 @@ centralGaussianPDF z cv qx = let
 
 -- | Compute a multivariate normal pdf in principal components form.
 -- Uses the eigenvectors and eigenvalues to calculate the inverse of
--- the covariance matrix. 
+-- the covariance matrix.
 multiNormalPDF :: Vec4 -> Mat4 -> Quaternion -> Quaternion -> Double
 multiNormalPDF z cv qmu qx = let
   inte = vecFoldr (*) z
@@ -257,11 +262,11 @@ multiNormalPDF z cv qmu qx = let
   k  = ((2 * pi) ** (d/2)) * inte
   -- Is the same as: SUM ( <dx, V[i]> / z[i] )^2
   e  = normsqr $ (dx .* (transpose cv)) &! (vecMap (1/) z)
-  in (exp $ (-0.5) * e) / k 
+  in (exp $ (-0.5) * e) / k
 
--- ====================================== Plot Space ===========================================
+-- ====================================== Plot Space =====================================
 
-sphere :: Int -> Int -> (Vector Vec3, Vector SphereCell) 
+sphere :: Int -> Int -> (Vector Vec3, Vector SphereCell)
 sphere nPhi nTheta
   | nPhi   < 3 = sphere 3 nTheta
   | nTheta < 3 = sphere nPhi 3
@@ -289,13 +294,13 @@ sphere nPhi nTheta
     ll  = ll0 `V.cons` llm `V.snoc` lln
 
     mkMesh :: Vector (Vector Int) -> Vector SphereCell
-    mkMesh vl = V.ifoldl' (\acc i l -> acc V.++ mkStrip l (vl V.! (i+1))) V.empty (V.init vl) 
+    mkMesh vl = V.ifoldl' (\acc i l -> acc V.++ mkStrip l (vl V.! (i+1))) V.empty (V.init vl)
     mkStrip l1 l2 = let
       func i a b = SphereCell (b, l2 V.! (i+1), l1 V.! (i+1), a)
       merge      = SphereCell (V.head l2, V.head l1, V.last l1, V.last l2)
       in merge `V.cons` V.izipWith func (V.init l1) (V.init l2)
 
--- local instance to avoid conflict when exported. 
+-- local instance to avoid conflict when exported.
 newtype SphereCell = SphereCell (Int, Int, Int, Int)
 
 instance RenderCell SphereCell where
