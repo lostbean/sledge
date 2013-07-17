@@ -457,21 +457,20 @@ quaterInterpolation t (Quaternion pa) (Quaternion pb) = Quaternion v
     y  = sin (omega * (1-t)) / s
     yb = sin (omega *    t ) / s
 
--- | Scale a list of num in such way that the min non zero absolute value is 1.0
-aproxToIdealAxis :: Vec3 -> Double -> (Integer, Integer, Integer)
+-- | Calculates the approximated integer representation of poles (e.g. < 10 2 2 >).
+aproxToIdealAxis :: Vec3 -> Double -> (Int, Int, Int)
 aproxToIdealAxis (Vec3 x y z) err = let
-  ls = [x, y, z]
-  ratio num = approxRational num err
-  ns = map (numerator . ratio) ls
-  ds = map (denominator . ratio) ls
-  mmc = foldr lcm 1 ds
-  intValues = zipWith (\n d -> n*(div mmc d)) ns ds
+  ls    = [x, y, z]
+  ns    = map (numerator   . ratio) ls
+  ds    = map (denominator . ratio) ls
+  mmc   = foldr lcm 1 ds
+  mdc   = foldr gcd 0 nzIntVaules
+  ratio = (flip approxRational) err
+  intValues    = zipWith (\n d -> fromIntegral $ n * (div mmc d)) ns ds
+  nzIntVaules  = filter (/= 0) intValues
   [x', y', z'] = case nzIntVaules of
     [] -> intValues
-    _ -> map (\k -> (div k mdc)) intValues
-    where
-      nzIntVaules = filter (/= 0) intValues
-      mdc = foldr gcd 0 nzIntVaules
+    _  -> map (`div` mdc) intValues
   in (x', y', z')
 
 -- ================================ Show instances ===============================
