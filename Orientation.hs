@@ -28,7 +28,17 @@
 --  * Orientation Library Manual by Romain Quey
 --
 module Hammer.Texture.Orientation
-       ( RefFrame (..)
+       (  -- * Reference Frame
+         RefFrame (..)
+          -- * Angles
+       , Angle      (..)
+       , Deg        (..)
+       , Rad        (..)
+       , toDeg
+         -- * Rotation class
+       , Rot        (..)
+       , (=>#)
+         -- * Quaternions
        , Quaternion (quaterVec)
        , mkUnsafeQuaternion
        , mkQuaternion
@@ -36,22 +46,24 @@ module Hammer.Texture.Orientation
        , unsafeMergeQuaternion
        , mergeQuaternion
        , antipodal
-       , activeVecRotation
-       , passiveVecRotation
-       , Rot        (..)
-       , composeOmega
-       , Angle      (..)
-       , Deg        (..)
-       , Rad        (..)
-       , toDeg
+         -- * Euler
        , Euler      (phi1, phi, phi2)
        , mkEuler
+         -- * Axis-Angle
        , AxisPair   (axisAngle)
        , mkAxisPair
+         -- * Frank-Rodrigues
        , Rodrigues  (rodriVec)
        , mkRodrigues
+         -- * Matrix
        , RotMatrix  (rotMat)
        , mkUnsafeRotMatrix
+         -- * Vector rotation
+       , activeVecRotation
+       , passiveVecRotation
+         -- * Other functions
+       , quaterInterpolation
+       , aproxToIdealAxis
        ) where
 
 import Data.Ratio
@@ -60,8 +72,8 @@ import Numeric
 import Hammer.Math.Algebra
 import System.Random
 
-import Debug.Trace
-dbg s x = trace (s ++ show x) x
+-- import Debug.Trace
+-- dbg s x = trace (s ++ show x) x
 
 -- ==================================  Types ====================================
 
@@ -217,25 +229,12 @@ class Rot a where
   -- | Orientation composition. Given two orientations (passive rotations)
   -- @g1@ and @g2@, the operation
   --
-  --  >  g3 = g1 +@> g2
+  --  >  g3 = g1 #<= g2
   --
   -- applies a passive rotation @g2@ over the @g1@. In other words, it is the
   -- rotation @g1@ followed by the rotation @g2@. Note that the @g2@ rotation is
   -- applied on the reference frame of @g1@. This operation is not commutative.
-  (+@>) :: a -> a -> a
-
-  -- | Misorientation operator. Given two orientations (passive rotations)
-  -- @g1@ and @g2@, the operation
-  --
-  --  >  g12 = g2 -@- g1
-  --
-  -- finds the rotation difference between @g1@ and @g2@ in the reference global
-  -- frame that brings @g1@ to coincide to @g2@. Also note following rule:
-  --
-  --  >  g2 -@- g1 == invert (g1 -@- g2)
-  --
-  (-@-) :: a -> a -> a
-  a -@- b = a +@> (invert b)
+  (#<=) :: a -> a -> a
 
   -- | Misorientation operator in the crystal frame. Given two orientations
   -- (passive rotations) g1 and g2, the operation
@@ -246,10 +245,23 @@ class Rot a where
   -- of g1/ that brings g1 to coincide to g2 . Also note following rules:
   --
   --  >  g2 -#- g1 == invert (g1 -#- g2)
-  --  >  g2 == g1 +@> (g2 -#- g1)
+  --  >  g2 == g1 #<= (g2 -#- g1)
   --
   (-#-) :: a -> a -> a
-  a -#- b = (invert b) +@> a
+  a -#- b = (invert b) #<= a
+
+  -- | Misorientation operator in the sample reference frame. Given two orientations
+  -- (passive rotations) @g1@ and @g2@, the operation
+  --
+  --  >  g12 = g2 -@- g1
+  --
+  -- finds the rotation difference between @g1@ and @g2@ in the reference global
+  -- (sample) frame that brings @g1@ to coincide to @g2@. Also note following rule:
+  --
+  --  >  g2 -@- g1 == invert (g1 -@- g2)
+  --
+  (-@-) :: a -> a -> a
+  a -@- b = a #<= (invert b)
 
   -- | Opposite orientation (inverse rotation).
   invert :: a -> a
@@ -266,8 +278,13 @@ class Rot a where
   -- | Get rotation angle in radians. Normally from [0 .. 2*pi].
   getOmega :: a -> Double
 
+-- | The same as in '#<=' but with inverted parameters. Therefore, @g3 = g2 =># g1@ where
+-- @g1@ is applied over @g2@ in the reference frame of @g2@ itself, resulting in @g3@.
+(=>#) :: (Rot a)=> a -> a -> a
+(=>#) = flip (#<=)
+
 instance Rot Quaternion where
-  p +@> q = let
+  p #<= q = let
     (p0, pv) = splitQuaternion p
     (q0, qv) = splitQuaternion q
     pq0 = p0 * q0 - pv &. qv
@@ -279,10 +296,10 @@ instance Rot Quaternion where
   toQuaternion   = id
   fromQuaternion = id
   zerorot        = mkQuaternion $ Vec4 1 0 0 0
-  getOmega       = (2 *) . acosSafe . _1 . quaterVec
+  getOmega       = (2 *) . acosSafe . fst . splitQuaternion
 
 instance Rot Rodrigues where
-  (Rodrigues rA) +@> (Rodrigues rB) = let
+  (Rodrigues rA) #<= (Rodrigues rB) = let
     r = (rB &+ rA) &- (rB &^ rA)
     k = 1.0 - (rB &. rA)
     in Rodrigues $ r &* (1 / k)
@@ -307,7 +324,7 @@ instance Rot Rodrigues where
       k        = (tan halfW) / qvlen
 
 instance Rot AxisPair where
-  a +@> b = fromQuaternion $ (toQuaternion a) +@> (toQuaternion b)
+  a #<= b = fromQuaternion $ (toQuaternion a) #<= (toQuaternion b)
   invert (AxisPair (v, a)) = AxisPair (neg v, a)
   zerorot  = AxisPair (Vec3 1 0 0, 0)
   getOmega = snd . axisAngle
@@ -324,7 +341,7 @@ instance Rot AxisPair where
       qvlen    = norm qv
 
 instance Rot Euler where
-  a +@> b  = fromQuaternion $ (toQuaternion a) +@> (toQuaternion b)
+  a #<= b  = fromQuaternion $ (toQuaternion a) #<= (toQuaternion b)
   invert   = fromQuaternion . invert . toQuaternion
   zerorot  = Euler 0 0 0
   getOmega = getOmega . toQuaternion
@@ -349,7 +366,7 @@ instance Rot Euler where
       phi2 = atan2 q3 q0 - atan2 q2 q1
 
 instance Rot RotMatrix where
-  a +@> b  = b .*. a  -- In matrix composition the multiplication is commuted
+  a #<= b  = b .*. a  -- In matrix composition the multiplication is commuted
   invert   = transpose
   zerorot  = idmtx
   getOmega = acosSafe . (\x -> 0.5 * (x - 1)). vecFoldr (+) . diagVec . rotMat
@@ -394,22 +411,6 @@ mat2quat (RotMatrix m)
     q3_0 = sqrt $ (g33 + 1) / 2
 
 -- ================================== Other functions ==================================
-
-
--- | Fast calculation of a rotation angle after rotation comosition. The return angle in
--- radians is the absolute minimum angle between both antipodal rotations. The composition
--- is equivalent to '+@>', e.g. @getRotOmega p q == min (getOmega $ p +\@> q, antipodal $
--- getOmega $ p +\@> q)@. Note that some rotation representation has antipodal equivalency
--- ('AxisPair' and 'Quaternion'), which means that a rotation of @271 deg@ clockwise is
--- the same as a rotation of @90 deg@ anti-clockwise on the opposite direction. This
--- function is used to calculate minimum rotation angles with symmetric operations.
-composeOmega :: Quaternion -> Quaternion -> Double
-composeOmega p q = let
-  (p0, pv) = splitQuaternion p
-  (q0, qv) = splitQuaternion q
-  pq0 = p0 * q0 - pv &. qv
-  omega = (2 *) . acosSafe $ abs pq0
-  in omega
 
 -- | Find the antipodal (-q) quaternion that represents the same rotation.
 antipodal :: Quaternion -> Quaternion
@@ -577,17 +578,17 @@ testComposition = let
   a2 = fromQuaternion q2
   r1 = fromQuaternion q1 :: Rodrigues
   r2 = fromQuaternion q2
-  ce = e1 +@> e2
-  cq = q1 +@> q2
-  cm = m1 +@> m2
-  ca = a1 +@> a2
-  cr = r1 +@> r2
-        
+  ce = e1 #<= e2
+  cq = q1 #<= q2
+  cm = m1 #<= m2
+  ca = a1 #<= a2
+  cr = r1 #<= r2
+
   in do
     putStrLn $ "\n-- Testing composition "
     putStrLn $ " Rotation e1 = " ++ show e1
     putStrLn $ " followed by e2 = " ++ show e2
-    putStrLn $ " where e1 +@> e2 = Euler(30.0 deg, 30.0 deg, 0.0 deg)"
+    putStrLn $ " where e1 #<= e2 = Euler(30.0 deg, 30.0 deg, 0.0 deg)"
     putStrLn $ " Results:"
     putStrLn $ "Euler      => " ++ show ((fromQuaternion $ toQuaternion ce) :: Euler)
     putStrLn $ "Quaternion => " ++ show ((fromQuaternion $ toQuaternion cq) :: Euler)
@@ -606,7 +607,7 @@ testMisso = let
   cm  = q1 -#- q2
   cmi = q2 -#- q1
 
-  testm =  q1 +@> (q2 -#- q1)
+  testm =  q1 #<= (q2 -#- q1)
 
   in do
     putStrLn $ "\n-- Testing missorientations."
@@ -617,4 +618,4 @@ testMisso = let
     putStrLn $ " e2 -@- e1 => " ++ show ((fromQuaternion $ toQuaternion mi)  :: AxisPair)
     putStrLn $ " e1 -#- e2 => " ++ show ((fromQuaternion $ toQuaternion cm)  :: AxisPair)
     putStrLn $ " e2 -#- e1 => " ++ show ((fromQuaternion $ toQuaternion cmi) :: AxisPair)
-    putStrLn $ " e1 +@> (e2 -#- e1) == e2 == " ++ show ((fromQuaternion testm) :: Euler)
+    putStrLn $ " e1 #<= (e2 -#- e1) == e2 == " ++ show ((fromQuaternion testm) :: Euler)
