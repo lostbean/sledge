@@ -46,6 +46,7 @@ module Hammer.Texture.Orientation
        , unsafeMergeQuaternion
        , mergeQuaternion
        , antipodal
+       , composeQ0
          -- * Euler
        , Euler      (phi1, phi, phi2)
        , mkEuler
@@ -411,6 +412,17 @@ mat2quat (RotMatrix m)
     q3_0 = sqrt $ (g33 + 1) / 2
 
 -- ================================== Other functions ==================================
+
+-- | Fast calculation of @q0@ component of a quaternion composition. It is the same as
+-- '#<=' or '=>#' for @q0@ which gives information about the rotation angle. The input
+-- order doesn't matter in this case. This function is used for fast calculation of the
+-- minimum misorientation angle or the misorientation angle itself.
+composeQ0 :: Quaternion -> Quaternion -> Double
+composeQ0 p q = let
+  (p0, pv) = splitQuaternion p
+  (q0, qv) = splitQuaternion q
+  in p0 * q0 - pv &. qv
+{-# INLINE composeQ0 #-}
 
 -- | Find the antipodal (-q) quaternion that represents the same rotation.
 antipodal :: Quaternion -> Quaternion

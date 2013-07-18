@@ -18,6 +18,7 @@ module Hammer.Texture.Symmetry
        , toFZ
        , toFZGeneric
        , toFZDirect
+       , getInFZ
           -- * Vector operations
        , getAllSymmVec
        , getUniqueSymmVecs
@@ -127,10 +128,12 @@ getInFZ :: Vector SymmOp -> Quaternion -> Quaternion
 getInFZ vs q
   | V.null vs = q
   | otherwise = let
+    q0s  = V.map (abs . composeQ0 q . symmOp) vs
+    -- Max. |q0| means min. rotation angle.
     minO = V.maxIndex q0s
     comp = (q #<=) . symmOp
     q0s  = V.map (abs . fst . splitQuaternion . comp) vs
-    in comp (vs V.! minO)
+    in q #<= (symmOp (vs V.! minO))
 
 -- | Finds the symmetric equivalent orientation that belongs to the Fundamental
 -- Zone given a symmetric group and one orientation. The orientation in the
