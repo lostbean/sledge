@@ -41,8 +41,8 @@ import           Data.Vector    (Vector)
 import           Hammer.Math.Algebra
 import           Hammer.Texture.Orientation
 
--- import           Debug.Trace
--- dbg s x = trace (s ++ show x) x
+--import           Debug.Trace
+--dbg s x = trace (s ++ show x) x
 
 -- =======================================================================================
 
@@ -250,17 +250,3 @@ isInRodriFZPlane q (FZPlane (n, dist))
 getMisoAngle :: Symm -> Quaternion -> Quaternion -> Double
 getMisoAngle symm q1 q2 = getOmegaRange . getOmega $ toFZ symm (q2 -#- q1)
 
--- =======================================================================================
-
-testSymm = let
-  e1  = toQuaternion $ mkEuler (Deg 45) (Deg 0) (Deg 0)
-  e2  = toQuaternion $ mkEuler (Deg 0) (Deg 90) (Deg 0)
-  e1' = toFZ Cubic e1
-  e2' = toFZ Cubic e2
-
-  de   = getMisoAngle Cubic e2 e1
-
-  in ( fromQuaternion (e1 -@- e2) :: AxisPair
-     , fromQuaternion (e1 -#- e2) :: AxisPair
-     , fromQuaternion (e1 #<= e2) :: Euler
-     )
