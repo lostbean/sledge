@@ -33,7 +33,6 @@
 module Hammer.Texture.IPF
        ( invPole
        , getIPFColor
-       , getIPFColorNoFZ
        , genIPFLegend
        , getRGBColor
        , RGBColor       (..)
@@ -131,13 +130,6 @@ getIPFColor symm ref q = let
   (fzn, as) = findMinAngleBase symm n
   in (fzn, colorAdjust $ ipfColor as)
 
--- | Calculates the IPF color in one reference frame directions for a given orientation
---  represented in quaternion and its symmetry group.
-getIPFColorNoFZ :: Symm -> RefFrame -> Quaternion -> (Normal3, RGBDoubleColor)
-getIPFColorNoFZ symm ref q = let
-  n       = invPole ref q
-  (_, as) = findMinAngleBase symm n
-  in (n, colorAdjust $ ipfColor as)
 
 -- | Finds the set of angles between a given direction and the planes of an 'IPFBase'. The
 -- returned angles between the direction @v@ and the planes are in radians and in the
