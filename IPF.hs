@@ -42,6 +42,7 @@ module Hammer.Texture.IPF
 import qualified Data.Vector as V
 
 import           Data.Word   (Word8)
+import           Data.Vector (Vector)
 
 import           System.Random
 
@@ -125,11 +126,11 @@ ipfColor (AngularDist (angleB, angleR, angleG))
 -- | Calculates the IPF color in one reference frame directions for a given orientation
 --  represented in quaternion and its symmetry group.
 getIPFColor :: Symm -> RefFrame -> Quaternion -> (Normal3, RGBDoubleColor)
-getIPFColor symm ref q = let
-  n         = invPole ref q
-  (fzn, as) = findMinAngleBase symm n
-  in (fzn, colorAdjust $ ipfColor as)
-
+getIPFColor symm ref = let
+  foo (fzn, as) = (fzn, colorAdjust $ ipfColor as)
+  base          = getIPFSchema symm
+  symOps        = getSymmOps symm
+  in foo . findMinAngleBase symOps base . invPole ref
 
 -- | Finds the set of angles between a given direction and the planes of an 'IPFBase'. The
 -- returned angles between the direction @v@ and the planes are in radians and in the
@@ -145,10 +146,9 @@ findAnglesBase v IPFBase{..} = let
 -- | Finds the minimum set of angles between a given direction and all symmetric planes of
 -- 'IPFBase'. The returned angles between the direction @v@ and the planes are in radians
 -- and in the following order: @(v <-> plane RG, v <-> plane GB, v <-> plane BR)@
-findMinAngleBase :: Symm -> Normal3 -> (Normal3, AngularDist)
-findMinAngleBase symm x = let
-  base   = getIPFSchema symm
-  symmX  = V.map mkNormal $ getAllSymmVec symm $ fromNormal x
+findMinAngleBase :: Vector SymmOp -> IPFBase -> Normal3 -> (Normal3, AngularDist)
+findMinAngleBase symOps base x = let
+  symmX  = V.map mkNormal $ getAllSymmVec symOps $ fromNormal x
   ibase  = V.minIndex $ V.map (angDist . (flip findAnglesBase) base) symmX
   finalX = symmX V.! ibase
   alphas = findAnglesBase finalX base
@@ -159,7 +159,6 @@ genIPFLegend :: FilePath -> Int -> IO ()
 genIPFLegend name n = do
   qs <- V.replicateM n randomIO
   let
-    -- (ns, cs) = V.unzip $ V.map (getIPFColorNoFZ Cubic ND) qs
     (ns, cs) = V.unzip $ V.map (getIPFColor Cubic ND) qs
     sps      = getBothProj $ V.map lambertSO3Proj ns
     out      = V.zipWith func sps cs

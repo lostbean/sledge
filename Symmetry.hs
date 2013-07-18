@@ -131,8 +131,6 @@ getInFZ vs q
     q0s  = V.map (abs . composeQ0 q . symmOp) vs
     -- Max. |q0| means min. rotation angle.
     minO = V.maxIndex q0s
-    comp = (q #<=) . symmOp
-    q0s  = V.map (abs . fst . splitQuaternion . comp) vs
     in q #<= (symmOp (vs V.! minO))
 
 -- | Finds the symmetric equivalent orientation that belongs to the Fundamental
@@ -177,15 +175,13 @@ getOmegaRange o
 
 -- | Calculates all the symmetric equivalents of a given vector. The calculation is done
 -- by passive rotations (changes of base)
-getAllSymmVec :: Symm -> Vec3 -> Vector Vec3
-getAllSymmVec symm vec = let
-  syops = getSymmOps symm
-  in V.map (passiveVecRotation vec . symmOp) syops
+getAllSymmVec :: Vector SymmOp -> Vec3 -> Vector Vec3
+getAllSymmVec symOps = \vec -> V.map (passiveVecRotation vec . symmOp) symOps
 
 -- | Calculates all the /unique/ (non-repeated) symmetric equivalents of a given vector.
 -- The calculation is done by filtering the output of 'getAllSymmVec'.
-getUniqueSymmVecs :: Symm -> Vec3 -> Vector Vec3
-getUniqueSymmVecs symm v = nubVec $ getAllSymmVec symm v
+getUniqueSymmVecs :: Vector SymmOp -> Vec3 -> Vector Vec3
+getUniqueSymmVecs symOps = nubVec . getAllSymmVec symOps
 
 -- | Get a list of /unique/ vectors by filtering the repeated ones.
 nubVec :: (DotProd a)=> Vector a -> Vector a
@@ -215,9 +211,12 @@ mkFZPlane (SymmAxis (dir, n)) = FZPlane (normal, dist)
     normal = mkNormal dir
     dist   = abs $ tan (pi / (2 * (fromIntegral n)))
 
--- | Test if a given orientation is inside the fundamental zone.
+-- | Test if a given orientation is inside the fundamental zone of Frank-Rodrigues space.
 isInRodriFZ :: Symm -> Quaternion -> Bool
-isInRodriFZ symm q = V.and . V.map (isInRodriFZPlane q) $ getFZPlanes symm
+isInRodriFZ symm = let
+  planes = getFZPlanes symm
+  -- memorizing planes (eta expression)
+  in \q -> V.and $ V.map (isInRodriFZPlane q) planes
 
 -- | Test if a given orientation is between a fundamental zone symmetric plane.
 isInRodriFZPlane :: Quaternion -> FZPlane -> Bool
@@ -235,21 +234,24 @@ isInRodriFZPlane q (FZPlane (n, dist))
 -- account the crystal symmetry.
 --
 -- > Gb == Gab * Ga  => Gab == Gb * inv(Ga) == Gb -#- Ga
+--
 -- By symmetry:
 --
 -- >  Gb -#- Ga == inv (Ga -#- Gb)
 --
--- In order to reduce calculation time, this function uses 24 symmetric operators instead of
--- the theoretical 1152 (24*24*2). At first, it calculates the misorientation and then finds
--- the lowest rotation angle (fundamental zone) among the 24 symmetrical equivalents of the
--- misorientation. Although the mathematical prove is unknown, it works quite well in
--- practice, at least for misorientation /angles/.
+-- In order to reduce calculation time, this function uses 24 symmetric operators instead
+-- of the theoretical 1152 (24*24*2). At first, it calculates the misorientation and then
+-- finds the lowest rotation angle (fundamental zone) among the 24 symmetrical equivalents
+-- of the misorientation. Although the mathematical prove is unknown, it works quite well
+-- in practice, at least for misorientation /angles/.
 --
 -- This function should be used for /any/ orientation, even
 -- between those in the fundamental zone, due the discontinuity in the fundamental zone.
--- For example, @Euler 44 0 0@ and @Euler 46 0 0@ are @2 degrees@ apart in the reality but
--- the fundamental zone they @88 degrees@ apart because @Euler 46 0 0@ goes to
+-- For example, @Euler 44 0 0@ and @Euler 46 0 0@ are @2 degrees@ apart from each other
+-- but in the fundamental zone they are @88 degrees@ apart because @Euler 46 0 0@ goes to
 -- @Euler (-44) 0 0@ in the fundamental zone.
 getMisoAngle :: Symm -> Quaternion -> Quaternion -> Double
-getMisoAngle symm q1 q2 = getOmegaRange . getOmega $ toFZ symm (q2 -#- q1)
-
+getMisoAngle symm = let
+  foo = getOmegaRange . getOmega . toFZ symm
+  -- avoiding eta expansion of q1 and q2 to memorize
+  in \q1 q2 -> foo (q2 -#- q1)
