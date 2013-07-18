@@ -38,6 +38,8 @@ module Hammer.Texture.Orientation
          -- * Rotation class
        , Rot        (..)
        , (=>#)
+       , getShortOmega
+       , getAbsShortOmega
          -- * Quaternions
        , Quaternion (quaterVec)
        , mkUnsafeQuaternion
@@ -284,6 +286,16 @@ class Rot a where
 (=>#) :: (Rot a)=> a -> a -> a
 (=>#) = flip (#<=)
 
+-- | Get rotation angle in radians in [ -pi, pi ] range.
+getShortOmega :: (Rot a)=> a -> Double
+getShortOmega = getShortAngle . getOmega
+
+-- | Get the absolute rotation angle in radians in [ 0, pi ] range. This notation doesn't
+-- specify if the rotation is clockwise or anti-clockwise
+getAbsShortOmega :: (Rot a)=> a -> Double
+getAbsShortOmega = getAbsShortAngle . getOmega
+
+
 instance Rot Quaternion where
   p #<= q = let
     (p0, pv) = splitQuaternion p
@@ -413,6 +425,18 @@ mat2quat (RotMatrix m)
 
 -- ================================== Other functions ==================================
 
+-- | Converts an angle in Radians from the @[0, 2*pi]@ range to @[-pi, pi]@ range.
+getAbsShortAngle :: Double -> Double
+getAbsShortAngle a
+  | a > pi    = 2 * pi - a
+  | otherwise = a
+
+-- | Converts an angle in Radians from the @[0, 2*pi]@ range to @[-pi, pi]@ range.
+getShortAngle :: Double -> Double
+getShortAngle a
+  | a > pi    = a - 2 * pi
+  | otherwise = a
+
 -- | Fast calculation of @q0@ component of a quaternion composition. It is the same as
 -- '#<=' or '=>#' for @q0@ which gives information about the rotation angle. The input
 -- order doesn't matter in this case. This function is used for fast calculation of the
@@ -530,9 +554,16 @@ testOrientationModule = let
     , toQuaternion $ mkEuler (Deg 0.0)  (Deg 54.7) (Deg 45.0)
     , toQuaternion $ mkEuler (Deg 30.0) (Deg 54.7) (Deg 45.0)
     ]
+  testAngle =
+    [ toQuaternion $ mkEuler (Deg   0.0)  (Deg (-190.0)) (Deg 0.0)
+    , toQuaternion $ mkEuler (Deg 380.0)  (Deg      0.0) (Deg 0.0)
+    ]
   in do
     putStrLn  "-- Checking RotationSystem module..."
     testAngleConv an
+    mapM_ (testgetAngle id) testAngle
+    mapM_ (testgetAngle getShortAngle) testAngle
+    mapM_ (testgetAngle getAbsShortAngle) testAngle
     mapM_ showAll test
     mapM_ testConv test
     testComposition
@@ -567,16 +598,38 @@ testConv q = do
     qr  = toQuaternion r
     m   = (fromQuaternion q) :: RotMatrix
     qm  = toQuaternion m
-    outm  = show $ getOmega (q -@- qm)
-    outap = show $ getOmega (q -@- qap)
-    oute  = show $ getOmega (q -@- qe)
-    outr  = show $ getOmega (q -@- qr)
+    outm  = toAngle $ getOmega (q -@- qm)  :: Deg
+    outap = toAngle $ getOmega (q -@- qap) :: Deg
+    oute  = toAngle $ getOmega (q -@- qe)  :: Deg
+    outr  = toAngle $ getOmega (q -@- qr)  :: Deg
   putStrLn "------------------------------------------------"
-  putStrLn $ "-- Quaternion: "           ++ show q
-  putStrLn $ "-- Euler conversion: "     ++ oute
-  putStrLn $ "-- AxisPair conversion: "  ++ outap
-  putStrLn $ "-- Rodrigues conversion: " ++ outr
-  putStrLn $ "-- RotMatrix conversion: " ++ outm
+  putStrLn $ "-- Quaternion:           " ++ show q
+  putStrLn $ "-- Euler conversion:     " ++ show oute
+  putStrLn $ "-- AxisPair conversion:  " ++ show outap
+  putStrLn $ "-- Rodrigues conversion: " ++ show outr
+  putStrLn $ "-- RotMatrix conversion: " ++ show outm
+  putStrLn "\n"
+
+testgetAngle :: (Double -> Double) -> Quaternion -> IO ()
+testgetAngle foo q = do
+  let
+    a = (fromQuaternion q) :: AxisPair
+    e = (fromQuaternion q) :: Euler
+    r = (fromQuaternion q) :: Rodrigues
+    m = (fromQuaternion q) :: RotMatrix
+    outq = (toAngle . foo $ getOmega q) :: Deg
+    outm = (toAngle . foo $ getOmega m) :: Deg
+    outa = (toAngle . foo $ getOmega a) :: Deg
+    oute = (toAngle . foo $ getOmega e) :: Deg
+    outr = (toAngle . foo $ getOmega r) :: Deg
+  putStrLn "------------------------------------------------"
+  putStrLn "Expecting angles between 0 and 360 deg."
+  putStrLn $ "-- Quaternion:           " ++ show outq
+  putStrLn $ "-- Euler conversion:     " ++ show oute
+  putStrLn $ "-- AxisPair conversion:  " ++ show outa
+  putStrLn $ "-- Rodrigues conversion: " ++ show outr
+  putStrLn $ "-- RotMatrix conversion: " ++ show outm
+  putStrLn "\n"
 
 testComposition :: IO ()
 testComposition = let

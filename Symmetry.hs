@@ -160,18 +160,8 @@ toFZGeneric symm = fromQuaternion . toFZ symm . toQuaternion
 toFZDirect :: (Rot a)=> Vector a -> a -> a
 toFZDirect symmOps x = let
   minW  = V.minIndex rs
-  rs    = V.map (getOmegaRange . getOmega . (x #<=)) symmOps
+  rs    = V.map (getAbsShortOmega . (x #<=)) symmOps
   in x #<= (symmOps V.! minW)
-
--- | Finds the minimum absolute rotation angle between both antipodal equivalent
--- rotations. Note that some rotation representation has antipodal equivalency
--- ('AxisPair' and 'Quaternion'), which means that a rotation of @271 deg@
--- clockwise is the same as a rotation of @90 deg@ anti-clockwise on the opposite
--- direction.
-getOmegaRange :: Double -> Double
-getOmegaRange o
-  | o > pi    = 2 * pi - o
-  | otherwise = o
 
 -- | Calculates all the symmetric equivalents of a given vector. The calculation is done
 -- by passive rotations (changes of base)
@@ -252,6 +242,6 @@ isInRodriFZPlane q (FZPlane (n, dist))
 -- @Euler (-44) 0 0@ in the fundamental zone.
 getMisoAngle :: Symm -> Quaternion -> Quaternion -> Double
 getMisoAngle symm = let
-  foo = getOmegaRange . getOmega . toFZ symm
+  foo = getAbsShortOmega . toFZ symm
   -- avoiding eta expansion of q1 and q2 to memorize
   in \q1 q2 -> foo (q2 -#- q1)
