@@ -22,9 +22,9 @@ import qualified Data.List           as L
 import qualified Data.Vector.Unboxed as U
 
 import Data.Vector.Unboxed          (Vector)
-  
-import Math.Gamma 
-  
+
+import Math.Gamma
+
 --import Debug.Trace
 --dbg s x = trace (s L.++ show x) x
 
@@ -32,12 +32,12 @@ epsilon :: Double
 epsilon = 1e-8
 
 iteration_factor :: Int
-iteration_factor = 10 
-                    
+iteration_factor = 10
+
 min_iterations :: Int
 min_iterations = 10
 
--- ======================================= 1F1 ==============================================
+-- ===================================== 1F1 =============================================
 
 -- | Computes the hypergeometric function 1F1(a;b;z1,z2,z3) with a = 1/2, b = (dim+1)/2
 computeF :: Int -> Double -> Double -> Double -> Double
@@ -48,12 +48,12 @@ computeF dime z1 z2 z3 = case L.sort $ L.filter ((>epsilon).abs) [z1, z2, z3] of
   [s1, s2]
     | s1 > 0    -> rp * compute_1F1_2d a b s1 s2 iter
     | otherwise -> exp s1 * computeF dime (-s1) (s2-s1) 0
-  [s1, s2, s3] 
+  [s1, s2, s3]
     | s1 > 0    -> compute_1F1_3d a b s1 s2 s3 iter
     | otherwise -> exp s1 * computeF dime (-s1) (s2-s1) (s3-s1)
   _ -> surface_area_sphere dime   -- Uniform
   where
-    rp = sqrt pi -- equal to gamma(1/2) 
+    rp = sqrt pi -- equal to gamma(1/2)
     a  = 0.5
     b  = 0.5 * (fromIntegral $ dime + 1)
     -- number of iteractions
@@ -96,7 +96,7 @@ compute_1F1_2d a b z1 z2 iter = let
       g = lnGamma (di + a) + lnGamma (dj + a) - lnGamma (di + dj + b) +
           di * log z1 + dj * log z2 - logFact i - logFact j
   in 2 * sqrt(pi) * (func 0 0 0)
-     
+
 -- | Computes the hypergeometric function 1F1(a;b;z1) in canonical form (z1 > 0)
 compute_1F1_1d :: Double -> Double -> Double -> Int -> Double
 compute_1F1_1d a b z1 iter = let
@@ -107,12 +107,10 @@ compute_1F1_1d a b z1 iter = let
     | otherwise = func (acc + exp g) s
     where
       di = fromIntegral i
-      g = lnGamma (di + a) - lnGamma (di + b) + di * (log z1) - logFact i 
+      g = lnGamma (di + a) - lnGamma (di + b) + di * (log z1) - logFact i
   in 2 * sqrt(pi) * (func 0 [0..iter])
 
-
-
--- ======================================= d1F1/dz ==============================================
+-- ==================================== d1F1/dz ==========================================
 
 -- | Computes the hypergeometric function 1F1(a;b;z1,z2,z3) with a = 1/2, b = (dim+1)/2
 computedFdz1 :: Int -> Double -> Double -> Double -> Double
@@ -125,7 +123,7 @@ computedFdz1 dime z1 z2 z3 = case L.sort $ L.filter ((>epsilon).abs) [z1, z2, z3
     | otherwise -> computeF dime s1 s2 0 - exp s1 *
                    ( computedFdz1 dime (-s1) (s2-s1) 0 +
                      computedFdz2 dime (-s1) (s2-s1) 0 )
-  [s1, s2, s3] 
+  [s1, s2, s3]
     | s1 > 0    -> compute_d1F1_dz1_3d a b s1 s2 s3 iter
     | otherwise -> computeF dime s1 s2 s3 -
                    exp s1 * ( computedFdz1 dime (-s1) (s2-s1) (s3-s1) +
@@ -133,7 +131,7 @@ computedFdz1 dime z1 z2 z3 = case L.sort $ L.filter ((>epsilon).abs) [z1, z2, z3
                               computedFdz3 dime (-s1) (s2-s1) (s3-s1) )
   _ -> (surface_area_sphere dime) / (fromIntegral $ dime + 1)   -- Uniform
   where
-    rp = sqrt pi 
+    rp = sqrt pi
     a  = 0.5
     b  = 0.5 * (fromIntegral $ dime + 1)
     -- number of iteractions
@@ -149,12 +147,12 @@ computedFdz2 dime z1 z2 z3 = case L.sort $ L.filter ((>epsilon).abs) [z1, z2, z3
   [s1, s2]
     | s1 > 0    -> rp * compute_d1F1_dz2_2d a b s1 s2 iter
     | otherwise -> exp s1 * computedFdz2 dime (-s1) (s2-s1) 0
-  [s1, s2, s3] 
+  [s1, s2, s3]
     | s1 > 0    -> compute_d1F1_dz2_3d a b s1 s2 s3 iter
     | otherwise -> exp s1 * computedFdz3 dime (-s1) (s2-s1) (s3-s1)
   _ -> (surface_area_sphere dime) / (fromIntegral $ dime + 1)   -- Uniform
   where
-    rp = sqrt pi 
+    rp = sqrt pi
     a  = 0.5
     b  = 0.5 * (fromIntegral $ dime + 1)
     b2 = 0.5 * (fromIntegral $ dime + 3)
@@ -167,16 +165,16 @@ computedFdz3 :: Int -> Double -> Double -> Double -> Double
 computedFdz3 dime z1 z2 z3 = case L.sort $ L.filter ((>epsilon).abs) [z1, z2, z3] of
   [s1]
     | s1 > 0    -> 0.5 * rp * rp * compute_1F1_1d a b2 s1 iter      -- (dim+2)
-    | otherwise -> 0.5 * exp s1 * computeF (dime+2) (-s1) 0 0       -- (dim+2)  
+    | otherwise -> 0.5 * exp s1 * computeF (dime+2) (-s1) 0 0       -- (dim+2)
   [s1, s2]
     | s1 > 0    -> 0.5 * rp * compute_1F1_2d a b2 s1 s2 iter        -- (dim+2)
     | otherwise -> 0.5 * exp s1 * computeF (dime+2) (-s1) (s2-s1) 0 -- (dim+2)
-  [s1, s2, s3] 
+  [s1, s2, s3]
     | s1 > 0    -> compute_d1F1_dz3_3d a b s1 s2 s3 iter
     | otherwise -> exp s1 * computedFdz2 dime (-s1) (s2-s1) (s3-s1)
   _ -> (surface_area_sphere dime) / (fromIntegral $ dime + 1)       -- Uniform
   where
-    rp = sqrt pi 
+    rp = sqrt pi
     a  = 0.5
     b  = 0.5 * (fromIntegral $ dime + 1)
     b2 = 0.5 * (fromIntegral $ dime + 3)
@@ -184,7 +182,7 @@ computedFdz3 dime z1 z2 z3 = case L.sort $ L.filter ((>epsilon).abs) [z1, z2, z3
     zmax = floor $ max (max (abs z1) (abs z2)) (abs z3)
     iter = max (zmax * iteration_factor) min_iterations
 
--- -------------------------------------- d1F1/dzx 3D --------------------------------------------
+-- ----------------------------------- d1F1/dzx 3D ---------------------------------------
 
 -- | Computes the hypergeometric function 1F1(a;b;z1,z2,z3) in canonical form (z1 > z2 > z3 > 0)
 compute_d1F1_dz1_3d :: Double -> Double -> Double -> Double -> Double -> Int -> Double
@@ -246,7 +244,7 @@ compute_d1F1_dz3_3d a b z1 z2 z3 iter = let
           - logFact i - logFact j - logFact (k-1)
   in 2 * sqrt(pi) * (func 0 0 0 1)
 
--- -------------------------------------- d1F1/dz 2D --------------------------------------------
+-- ---------------------------------- d1F1/dz 2D -----------------------------------------
 
 -- | Computes the hypergeometric function 1F1(a;b;z1,z2) in canonical form (z1 > z2 > 0)
 compute_d1F1_dz1_2d :: Double -> Double -> Double -> Double -> Int -> Double
@@ -281,8 +279,8 @@ compute_d1F1_dz2_2d a b z1 z2 iter = let
       g = lnGamma (di + a) + lnGamma (dj + a) - lnGamma (di + dj + b) +
           di * log z1 + (dj-1) * log z2 - logFact i - logFact (j-1)
   in 2 * sqrt(pi) * (func 0 0 1)
-     
--- -------------------------------------- d1F1/dz 1D --------------------------------------------
+
+-- ------------------------------------ d1F1/dz 1D ---------------------------------------
 
 -- | Computes the hypergeometric function 1F1(a;b;z1) in canonical form (z1 > 0)
 compute_d1F1_dz_1d :: Double -> Double -> Double -> Int -> Double
@@ -294,11 +292,11 @@ compute_d1F1_dz_1d a b z1 iter = let
     | otherwise = func (acc + exp g) s
     where
       di = fromIntegral i
-      g = lnGamma (di + a) - lnGamma (di + b) + (di-1) * (log z1) - logFact (i-1) 
+      g = lnGamma (di + a) - lnGamma (di + b) + (di-1) * (log z1) - logFact (i-1)
   in 2 * sqrt(pi) * (func 0 [1..iter])
 
--- ======================================= tools ==============================================
-     
+-- ==================================== tools ============================================
+
 -- | Computes the surface area of a unit sphere with dimension d
 surface_area_sphere :: Int -> Double
 surface_area_sphere d
@@ -313,4 +311,3 @@ logFactTable = U.scanl' (\acc i -> acc + log i) 0 (U.enumFromN 1 10000)
 
 logFact :: Int -> Double
 logFact = (logFactTable U.!)
-
