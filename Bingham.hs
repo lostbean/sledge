@@ -18,11 +18,14 @@ module Hammer.Texture.Bingham
        , binghamPDF
        , binghamMode
        , sampleBingham
+       , fitBingham
 
          -- * Render Bingham distribution
        , renderBingham
        , renderBinghamOmega
        , renderBinghamToEuler
+       , testFit
+       , writeAllTables
        ) where
 
 import qualified Data.List           as L
@@ -33,15 +36,14 @@ import           Control.Applicative ((<$>))
 import           Data.Vector         (Vector)
 import           System.Random       (randomIO)
 
-import           Math.Gamma
-
 import           Hammer.Math.Algebra
 import           Hammer.Texture.Orientation
 import           Hammer.Texture.BinghamNormalization
+import           Hammer.Texture.BinghamTable
 import           Hammer.Render.VTK.VTKRender
 
---import           Debug.Trace
---dbg s x = trace (s L.++ show x) x
+import           Debug.Trace
+dbg s x = trace (s L.++ show x) x
 
 epsilon :: Double
 epsilon = 1e-8
@@ -88,7 +90,7 @@ mkBingham  x1 x2 x3 = let
   dz2 = computedFdz2 3 z1 z2 z3
   dz3 = computedFdz3 3 z1 z2 z3
   dF  = DFDzx dz1 dz2 dz3
-  s   = scatterMatrix f dir z dF mode
+  s   = scatterMatrix f dir dF mode
   mode = binghamMode dir
   in Bingham z dir f mode dF s
 
@@ -101,8 +103,8 @@ binghamPDF Bingham{..} q = let
 
 -- =================================== Statistics ======================================
 
-scatterMatrix :: Double -> DistDir -> Vec3 -> DFDzx -> Quaternion -> Mat4
-scatterMatrix f DistDir{..} z DFDzx{..} qMode = let
+scatterMatrix :: Double -> DistDir -> DFDzx -> Quaternion -> Mat4
+scatterMatrix f DistDir{..} DFDzx{..} qMode = let
   mode = quaterVec qMode
   km = 1 - (dFdz1 + dFdz2 + dFdz3) / f
   sm = km *& outer mode mode
@@ -149,7 +151,7 @@ binghamMode directions = let
 
 -- | Metroplis-Hastings sampler for the Bingham distribution
 sampleBingham :: Bingham -> Int -> IO [Quaternion]
-sampleBingham dist@Bingham{..} n = func [] ti pi qi burn 0
+sampleBingham dist@Bingham{..} n = func [] ti wi qi burn (0 :: Int)
   where
     (v, conc) = symmEigen scatter
     burn      = -20
@@ -157,7 +159,7 @@ sampleBingham dist@Bingham{..} n = func [] ti pi qi burn 0
 
     qi = bingMode
     ti = binghamPDF dist qi        -- target
-    pi = centralGaussianPDF z v qi -- proposal
+    wi = centralGaussianPDF z v qi -- proposal
 
     func acc t0 p0 q0 count accepted = do
       q <- quaternionNormalRand z v q0
@@ -180,21 +182,6 @@ sampleBingham dist@Bingham{..} n = func [] ti pi qi burn 0
 -- | Sample a value between [0,1] from a uniform distribution.
 random01 :: IO Double
 random01 = abs <$> randomIO
-
-measureMean :: [Quaternion] -> Vec4
-measureMean [] = zero
-measureMean l = let
-  w = L.foldl' (\acc x -> let v = quaterVec x in acc &+ v) zero l
-  n = fromIntegral $ length l
-  in w &* (1 / n)
-
-measureCovariance :: [Quaternion] -> Mat4
-measureCovariance [] = zero
-measureCovariance l = let
-  --m = measureMean l
-  w = L.foldl' (\acc x -> let v = quaterVec x in acc &+ (outer v v)) zero l
-  n = fromIntegral $ length l
-  in w &* (1 / n)
 
 -- | Inverse of error function.
 invERF :: Double -> Double
@@ -263,6 +250,91 @@ multiNormalPDF z cv qmu qx = let
   -- Is the same as: SUM ( <dx, V[i]> / z[i] )^2
   e  = normsqr $ (dx .* (transpose cv)) &! (vecMap (1/) z)
   in (exp $ (-0.5) * e) / k
+
+-- ===================================== Bingham Fit =====================================
+
+fitBingham :: Vector Quaternion -> Bingham
+fitBingham qs = let
+  scatter = calcInertiaMatrix qs
+
+  v  = transpose . fst $ symmEigen scatter
+  v1 = _2 v
+  v2 = _3 v
+  v3 = _4 v
+
+  t1 = (v1 .* scatter) &. v1
+  t2 = (v2 .* scatter) &. v2
+  t3 = (v3 .* scatter) &. v3
+
+  (z1, z2, z3) = lookupConcentration (Vec3 t1 t2 t3)
+
+  in mkBingham
+     (z1, mkQuaternion v1)
+     (z2, mkQuaternion v2)
+     (z3, mkQuaternion v3)
+
+calcInertiaMatrix :: Vector Quaternion -> Mat4
+calcInertiaMatrix qs
+  | n > 0     = total &* (1/n)
+  | otherwise = zero
+  where
+    n     = fromIntegral (V.length qs)
+    total = V.foldl' func zero qs
+    func acc q = let
+      v = quaterVec q
+      in acc &+ (outer v v)
+
+lookupConcentration :: Vec3 -> (Double, Double, Double)
+lookupConcentration dY = let
+  (iz1, iz2, iz3) = fst $ findNearestNaive dY
+  initz1 = tableIndex U.! iz1
+  initz2 = tableIndex U.! iz2
+  initz3 = tableIndex U.! iz3
+  initDelta = 10
+  numIter   = 50 :: Int
+  go 0 step = step
+  go n step = case stepDown dY step of
+    Just next -> go (n-1) next
+    _         -> step
+  in fst $ go numIter ((initz1, initz2, initz3), initDelta)
+
+evalLookupError :: Vec3 -> (Double, Double, Double) -> Double
+evalLookupError dY (z1, z2, z3) = let
+  f     = interpolateF3D     z1 z2 z3
+  dFdz1 = interpolatedFdZ13D z1 z2 z3
+  dFdz2 = interpolatedFdZ13D z1 z2 z3
+  dFdz3 = interpolatedFdZ13D z1 z2 z3
+  dF    = Vec3 dFdz1 dFdz2 dFdz3
+  in dbg ("err> " ++ show (z1, z2, z3)) $ normsqr $ dF &* (1/f) &- dY
+
+evalErrGradient :: Vec3 -> (Double, Double, Double) -> (Double, Double, Double)
+evalErrGradient dY (z1, z2, z3) = let
+  dz = 0.01
+  g  = evalLookupError dY (z1   , z2   , z3   )
+  g1 = evalLookupError dY (z1+dz, z2   , z3   )
+  g2 = evalLookupError dY (z1   , z2+dz, z3   )
+  g3 = evalLookupError dY (z1   , z2   , z3+dz)
+  dgdz1 = (g1 - g) / dz
+  dgdz2 = (g2 - g) / dz
+  dgdz3 = (g3 - g) / dz
+  in (dgdz1, dgdz2, dgdz3)
+
+type Step = ((Double, Double, Double), Double)
+
+stepDown :: Vec3 -> Step -> Maybe Step
+stepDown dY (con@(z1, z2, z3), delta) = next
+  where
+    refErr = evalLookupError dY (z1, z2, z3)
+    scales = V.fromList [2.5, 1.5, 1.0, 0.5, 0.25]
+    tries  = V.map foo scales
+    next   = V.find ((refErr >) . evalLookupError dY . fst) tries
+    (d1, d2, d3) = evalErrGradient dY (z1, z2, z3)
+    foo scale = let
+      k = scale * delta
+      nz1 = z1 - k * d1
+      nz2 = z2 - k * d2
+      nz3 = z3 - k * d3
+      in ((nz1, nz2, nz3), k)
 
 -- ====================================== Plot Space =====================================
 
@@ -374,7 +446,7 @@ testSample n = let
      a <- sampleBingham dist n
      putStrLn $ show dist
      putStrLn $ showPretty $ scatter dist
-     putStrLn $ showPretty $ measureCovariance a
+     putStrLn $ showPretty $ calcInertiaMatrix $ V.fromList a
      writeQuater "BingPDF" $ renderBingham dist 20
      writeQuater "BingSamples" $ renderPoints a
      writeQuater "EulerPDF" $ renderBinghamToEuler (Deg 5) (72, 36, 72) dist
@@ -386,3 +458,110 @@ testDist = let
   d3 = (1,  mkQuaternion (Vec4 1 0 0 0))
   dist = mkBingham d1 d2 d3
   in dist
+
+testFit :: Bingham
+testFit = fitBingham qs
+  where
+    qs = V.fromList [
+      mkQuaternion $ Vec4 0.8776         0         0   (-0.4794),
+      mkQuaternion $ Vec4 0.8752         0         0   (-0.4838),
+      mkQuaternion $ Vec4 0.8727         0         0   (-0.4882),
+      mkQuaternion $ Vec4 0.8703         0         0   (-0.4925),
+      mkQuaternion $ Vec4 0.8678         0         0   (-0.4969),
+      mkQuaternion $ Vec4 0.8653         0         0   (-0.5012),
+      mkQuaternion $ Vec4 0.8628         0         0   (-0.5055),
+      mkQuaternion $ Vec4 0.8603         0         0   (-0.5098),
+      mkQuaternion $ Vec4 0.8577         0         0   (-0.5141),
+      mkQuaternion $ Vec4 0.8551         0         0   (-0.5184),
+      mkQuaternion $ Vec4 0.8525         0         0   (-0.5227),
+      mkQuaternion $ Vec4 0.8499         0         0   (-0.5269),
+      mkQuaternion $ Vec4 0.8473         0         0   (-0.5312),
+      mkQuaternion $ Vec4 0.8446         0         0   (-0.5354),
+      mkQuaternion $ Vec4 0.8419         0         0   (-0.5396),
+      mkQuaternion $ Vec4 0.8392         0         0   (-0.5438),
+      mkQuaternion $ Vec4 0.8365         0         0   (-0.5480),
+      mkQuaternion $ Vec4 0.8337         0         0   (-0.5522),
+      mkQuaternion $ Vec4 0.8309         0         0   (-0.5564),
+      mkQuaternion $ Vec4 0.8281         0         0   (-0.5605),
+      mkQuaternion $ Vec4 0.8253         0         0   (-0.5646),
+      mkQuaternion $ Vec4 0.8225         0         0   (-0.5688),
+      mkQuaternion $ Vec4 0.8196         0         0   (-0.5729),
+      mkQuaternion $ Vec4 0.8168         0         0   (-0.5770),
+      mkQuaternion $ Vec4 0.8139         0         0   (-0.5810),
+      mkQuaternion $ Vec4 0.8110         0         0   (-0.5851),
+      mkQuaternion $ Vec4 0.8080         0         0   (-0.5891),
+      mkQuaternion $ Vec4 0.8051         0         0   (-0.5932),
+      mkQuaternion $ Vec4 0.8021         0         0   (-0.5972),
+      mkQuaternion $ Vec4 0.7991         0         0   (-0.6012),
+      mkQuaternion $ Vec4 0.7961         0         0   (-0.6052),
+      mkQuaternion $ Vec4 0.7930         0         0   (-0.6092),
+      mkQuaternion $ Vec4 0.7900         0         0   (-0.6131),
+      mkQuaternion $ Vec4 0.7869         0         0   (-0.6171),
+      mkQuaternion $ Vec4 0.7838         0         0   (-0.6210),
+      mkQuaternion $ Vec4 0.7807         0         0   (-0.6249),
+      mkQuaternion $ Vec4 0.7776         0         0   (-0.6288),
+      mkQuaternion $ Vec4 0.7744         0         0   (-0.6327),
+      mkQuaternion $ Vec4 0.7712         0         0   (-0.6365),
+      mkQuaternion $ Vec4 0.7681         0         0   (-0.6404),
+      mkQuaternion $ Vec4 0.7648         0         0   (-0.6442),
+      mkQuaternion $ Vec4 0.7616         0         0   (-0.6480),
+      mkQuaternion $ Vec4 0.7584         0         0   (-0.6518),
+      mkQuaternion $ Vec4 0.7551         0         0   (-0.6556),
+      mkQuaternion $ Vec4 0.7518         0         0   (-0.6594),
+      mkQuaternion $ Vec4 0.7485         0         0   (-0.6631),
+      mkQuaternion $ Vec4 0.7452         0         0   (-0.6669),
+      mkQuaternion $ Vec4 0.7418         0         0   (-0.6706),
+      mkQuaternion $ Vec4 0.7385         0         0   (-0.6743),
+      mkQuaternion $ Vec4 0.7351         0         0   (-0.6780),
+      mkQuaternion $ Vec4 0.7317         0         0   (-0.6816),
+      mkQuaternion $ Vec4 0.7283         0         0   (-0.6853),
+      mkQuaternion $ Vec4 0.7248         0         0   (-0.6889),
+      mkQuaternion $ Vec4 0.7214         0         0   (-0.6925),
+      mkQuaternion $ Vec4 0.7179         0         0   (-0.6961),
+      mkQuaternion $ Vec4 0.7144         0         0   (-0.6997),
+      mkQuaternion $ Vec4 0.7109         0         0   (-0.7033),
+      mkQuaternion $ Vec4 0.7074         0         0   (-0.7068),
+      mkQuaternion $ Vec4 0.7038         0         0   (-0.7104),
+      mkQuaternion $ Vec4 0.7003         0         0   (-0.7139),
+      mkQuaternion $ Vec4 0.6967         0         0   (-0.7174),
+      mkQuaternion $ Vec4 0.6931         0         0   (-0.7208),
+      mkQuaternion $ Vec4 0.6895         0         0   (-0.7243),
+      mkQuaternion $ Vec4 0.6859         0         0   (-0.7277),
+      mkQuaternion $ Vec4 0.6822         0         0   (-0.7311),
+      mkQuaternion $ Vec4 0.6786         0         0   (-0.7345),
+      mkQuaternion $ Vec4 0.6749         0         0   (-0.7379),
+      mkQuaternion $ Vec4 0.6712         0         0   (-0.7413),
+      mkQuaternion $ Vec4 0.6675         0         0   (-0.7446),
+      mkQuaternion $ Vec4 0.6637         0         0   (-0.7480),
+      mkQuaternion $ Vec4 0.6600         0         0   (-0.7513),
+      mkQuaternion $ Vec4 0.6562         0         0   (-0.7546),
+      mkQuaternion $ Vec4 0.6524         0         0   (-0.7578),
+      mkQuaternion $ Vec4 0.6486         0         0   (-0.7611),
+      mkQuaternion $ Vec4 0.6448         0         0   (-0.7643),
+      mkQuaternion $ Vec4 0.6410         0         0   (-0.7675),
+      mkQuaternion $ Vec4 0.6372         0         0   (-0.7707),
+      mkQuaternion $ Vec4 0.6333         0         0   (-0.7739),
+      mkQuaternion $ Vec4 0.6294         0         0   (-0.7771),
+      mkQuaternion $ Vec4 0.6255         0         0   (-0.7802),
+      mkQuaternion $ Vec4 0.6216         0         0   (-0.7833),
+      mkQuaternion $ Vec4 0.6177         0         0   (-0.7864),
+      mkQuaternion $ Vec4 0.6137         0         0   (-0.7895),
+      mkQuaternion $ Vec4 0.6098         0         0   (-0.7926),
+      mkQuaternion $ Vec4 0.6058         0         0   (-0.7956),
+      mkQuaternion $ Vec4 0.6018         0         0   (-0.7986),
+      mkQuaternion $ Vec4 0.5978         0         0   (-0.8016),
+      mkQuaternion $ Vec4 0.5938         0         0   (-0.8046),
+      mkQuaternion $ Vec4 0.5898         0         0   (-0.8076),
+      mkQuaternion $ Vec4 0.5857         0         0   (-0.8105),
+      mkQuaternion $ Vec4 0.5817         0         0   (-0.8134),
+      mkQuaternion $ Vec4 0.5776         0         0   (-0.8163),
+      mkQuaternion $ Vec4 0.5735         0         0   (-0.8192),
+      mkQuaternion $ Vec4 0.5694         0         0   (-0.8220),
+      mkQuaternion $ Vec4 0.5653         0         0   (-0.8249),
+      mkQuaternion $ Vec4 0.5612         0         0   (-0.8277),
+      mkQuaternion $ Vec4 0.5570         0         0   (-0.8305),
+      mkQuaternion $ Vec4 0.5529         0         0   (-0.8333),
+      mkQuaternion $ Vec4 0.5487         0         0   (-0.8360),
+      mkQuaternion $ Vec4 0.5445         0         0   (-0.8388),
+      mkQuaternion $ Vec4 0.5403         0         0   (-0.8415)
+      ]
