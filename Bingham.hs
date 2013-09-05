@@ -25,7 +25,6 @@ module Hammer.Texture.Bingham
        , renderBinghamOmega
        , renderBinghamToEuler
        , testFit
-       , writeAllTables
        ) where
 
 import qualified Data.List           as L
@@ -38,8 +37,7 @@ import           System.Random       (randomIO)
 
 import           Hammer.Math.Algebra
 import           Hammer.Texture.Orientation
-import           Hammer.Texture.BinghamNormalization
-import           Hammer.Texture.BinghamTable
+import           Hammer.Texture.BinghamConstant
 import           Hammer.Render.VTK.VTKRender
 
 import           Debug.Trace
@@ -85,10 +83,7 @@ mkBingham  x1 x2 x3 = let
   dir = DistDir (quaterVec d1) (quaterVec d2) (quaterVec d3)
   z   = Vec3 z1 z2 z3
   -- space of 3-sphere (S3 c R4)
-  f   = computeF 3 z1 z2 z3
-  dz1 = computedFdz1 3 z1 z2 z3
-  dz2 = computedFdz2 3 z1 z2 z3
-  dz3 = computedFdz3 3 z1 z2 z3
+  (f, (dz1, dz2, dz3, _)) = computeAllF z1 z2 z3 0
   dF  = DFDzx dz1 dz2 dz3
   s   = scatterMatrix f dir dF mode
   mode = binghamMode dir
@@ -253,26 +248,43 @@ multiNormalPDF z cv qmu qx = let
 
 -- ===================================== Bingham Fit =====================================
 
+type    Step = ((Double, Double, Double), Double)
+newtype DFF  = DFF {unDFF :: Vec4} deriving (Show)
+
+-- | Fit a Bingham distribution on a given set of quaternions using MLE (Maximum Likelihhod
+-- Estimation) to determine the concentration values.
 fitBingham :: Vector Quaternion -> Bingham
 fitBingham qs = let
   scatter = calcInertiaMatrix qs
 
-  v  = transpose . fst $ symmEigen scatter
-  v1 = _2 v
-  v2 = _3 v
-  v3 = _4 v
+  (ev, ex) = symmEigen scatter
+  -- sort decomposition by eigenvalues (highest eigenvalue -> highest concentration value)
+  (sortex, sortei) = let
+    xs = zip [_1 ex, _2 ex, _3 ex, _4 ex] [1 :: Int ..]
+    in unzip $ L.sortBy (\a b -> compare (fst a) (fst b)) xs
 
-  t1 = (v1 .* scatter) &. v1
-  t2 = (v2 .* scatter) &. v2
-  t3 = (v3 .* scatter) &. v3
+  -- v4 x4 will be axis with the highest eigenvalue (the highest concentration or mode)
+  ((_, axis2, axis3, axis4), dff) = let
+    v                = transpose ev
+    [v1, v2, v3, v4] = map getVec sortei
+    [x1, x2, x3, x4] = sortex
+    getVec i
+      | i == 1    = _1 v
+      | i == 2    = _2 v
+      | i == 3    = _3 v
+      | otherwise = _4 v
+    in ((v1, v2, v3, v4), DFF $ Vec4 x1 x2 x3 x4)
 
-  (z1, z2, z3) = lookupConcentration (Vec3 t1 t2 t3)
+  -- z4 by definition is equal zero
+  (z1, z2, z3) = trace ("target: " ++ show dff) $ lookupConcentration dff
 
   in mkBingham
-     (z1, mkQuaternion v1)
-     (z2, mkQuaternion v2)
-     (z3, mkQuaternion v3)
+     -- for positive concentrations
+     (z2-z1, mkQuaternion axis2)
+     (z3-z1, mkQuaternion axis3)
+     (  -z1, mkQuaternion axis4)
 
+-- | Calculates the inertia matrix that describes the distribution.
 calcInertiaMatrix :: Vector Quaternion -> Mat4
 calcInertiaMatrix qs
   | n > 0     = total &* (1/n)
@@ -284,51 +296,51 @@ calcInertiaMatrix qs
       v = quaterVec q
       in acc &+ (outer v v)
 
-lookupConcentration :: Vec3 -> (Double, Double, Double)
+-- | Find the concentration values using the gradient descent method.
+lookupConcentration :: DFF -> (Double, Double, Double)
 lookupConcentration dY = let
-  (iz1, iz2, iz3) = fst $ findNearestNaive dY
-  initz1 = tableIndex U.! iz1
-  initz2 = tableIndex U.! iz2
-  initz3 = tableIndex U.! iz3
-  initDelta = 10
-  numIter   = 50 :: Int
-  go 0 step = step
+  initz     = (0, 0, 0)
+  initDelta = 100
+  numIter   = 100 :: Int
+  go 0 _    = error "[Bingham] No convertion."
   go n step = case stepDown dY step of
     Just next -> go (n-1) next
     _         -> step
-  in fst $ go numIter ((initz1, initz2, initz3), initDelta)
+  in fst $ go numIter (initz, initDelta)
 
-evalLookupError :: Vec3 -> (Double, Double, Double) -> Double
-evalLookupError dY (z1, z2, z3) = let
-  f     = interpolateF3D     z1 z2 z3
-  dFdz1 = interpolatedFdZ13D z1 z2 z3
-  dFdz2 = interpolatedFdZ13D z1 z2 z3
-  dFdz3 = interpolatedFdZ13D z1 z2 z3
-  dF    = Vec3 dFdz1 dFdz2 dFdz3
-  in dbg ("err> " ++ show (z1, z2, z3)) $ normsqr $ dF &* (1/f) &- dY
+evaldFF :: (Double, Double, Double) -> DFF
+evaldFF (z1, z2, z3) = let
+  (f, (dFdz1, dFdz2, dFdz3, dFdz4)) = computeAllF z1 z2 z3 0
+  in DFF $ Vec4 (dFdz1 / f) (dFdz2 / f) (dFdz3 / f) (dFdz4 / f)
 
-evalErrGradient :: Vec3 -> (Double, Double, Double) -> (Double, Double, Double)
-evalErrGradient dY (z1, z2, z3) = let
-  dz = 0.01
-  g  = evalLookupError dY (z1   , z2   , z3   )
-  g1 = evalLookupError dY (z1+dz, z2   , z3   )
-  g2 = evalLookupError dY (z1   , z2+dz, z3   )
-  g3 = evalLookupError dY (z1   , z2   , z3+dz)
+-- | Evaluates the error function.
+dFFError :: DFF -> (Double, Double, Double) -> Double
+dFFError dY z = normsqr $ (unDFF $ evaldFF z) &- (unDFF dY)
+
+-- | Calculates the partial derivatives of the error function.
+dFFErrGradient :: DFF -> (Double, Double, Double) -> (Double, Double, Double)
+dFFErrGradient dY (z1, z2, z3) = let
+  dz = 0.02
+  g  = dFFError dY (z1   , z2   , z3   )
+  g1 = dFFError dY (z1+dz, z2   , z3   )
+  g2 = dFFError dY (z1   , z2+dz, z3   )
+  g3 = dFFError dY (z1   , z2   , z3+dz)
   dgdz1 = (g1 - g) / dz
   dgdz2 = (g2 - g) / dz
   dgdz3 = (g3 - g) / dz
   in (dgdz1, dgdz2, dgdz3)
 
-type Step = ((Double, Double, Double), Double)
-
-stepDown :: Vec3 -> Step -> Maybe Step
-stepDown dY (con@(z1, z2, z3), delta) = next
+-- | Runs one step in the gradient descent method.
+stepDown :: DFF -> Step -> Maybe Step
+stepDown dY ((z1, z2, z3), delta)
+  | refErr > 9e-5 = next
+  | otherwise     = Nothing
   where
-    refErr = evalLookupError dY (z1, z2, z3)
-    scales = V.fromList [2.5, 1.5, 1.0, 0.5, 0.25]
+    refErr = dbg ">> errRef: " $ dFFError dY (z1, z2, z3)
+    scales = V.fromList [2.5, 1.5, 1.0, 0.5, 0.25, 0.1]
     tries  = V.map foo scales
-    next   = V.find ((refErr >) . evalLookupError dY . fst) tries
-    (d1, d2, d3) = evalErrGradient dY (z1, z2, z3)
+    next   = V.find ((refErr >) . dFFError dY . fst) tries
+    (d1, d2, d3) = dFFErrGradient dY (z1, z2, z3)
     foo scale = let
       k = scale * delta
       nz1 = z1 - k * d1
