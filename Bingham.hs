@@ -16,7 +16,6 @@ module Hammer.Texture.Bingham
          -- * Main functions
        , mkBingham
        , binghamPDF
-       , binghamMode
        , sampleBingham
        , fitBingham
 
@@ -24,6 +23,8 @@ module Hammer.Texture.Bingham
        , renderBingham
        , renderBinghamOmega
        , renderBinghamToEuler
+
+       , testSampleFit
        ) where
 
 import qualified Data.List           as L
@@ -35,6 +36,7 @@ import           Data.Vector         (Vector)
 import           System.Random       (randomIO, randoms, newStdGen)
 
 import           Hammer.Math.Algebra
+import           Hammer.Math.Optimum
 import           Hammer.Texture.Orientation
 import           Hammer.Texture.BinghamConstant
 import           Hammer.Render.VTK.VTKRender
@@ -74,7 +76,16 @@ DistDir{..} |> v = Vec3 (v1 &. v) (v2 &. v) (v3 &. v)
 
 mkBingham :: (Double, Quaternion) -> (Double, Quaternion) -> (Double, Quaternion) -> Bingham
 mkBingham  x1 x2 x3 = let
-  [(z1, d1), (z2, d2), (z3, d3)] = L.sortBy (\a b -> fst a `compare` fst b) [x1, x2, x3]
+  x4 = (0, lastDir (snd x1) (snd x2) (snd x3))
+  zd = L.sortBy (\a b -> fst a `compare` fst b) [x1, x2, x3, x4]
+
+  -- find the highest concentration and set it as the mode and equal zero
+  -- therefore all others concentrations are negative
+  mode = snd $ last zd
+  [(z1, d1), (z2, d2), (z3, d3)] = let
+    zmax = fst $ last zd
+    in take 3 $ map (\(z, d) -> (z - zmax, d)) zd
+
   -- add check orthogonality
   dir = DistDir (quaterVec d1) (quaterVec d2) (quaterVec d3)
   z   = Vec3 z1 z2 z3
@@ -82,7 +93,6 @@ mkBingham  x1 x2 x3 = let
   (f, (dz1, dz2, dz3, _)) = computeAllF z1 z2 z3 0
   dF  = DFDzx dz1 dz2 dz3
   s   = scatterMatrix f dir dF mode
-  mode = binghamMode dir
   in Bingham z dir f mode dF s
 
 -- | Eval the Bingham distribution at specific point
@@ -120,12 +130,12 @@ cutDistDir DistDir{..} n
     cut2 (Vec4 a b _ d) = Vec3 a b d
     cut3 (Vec4 a b c _) = Vec3 a b c
 
--- | Find the mode of a bingham distribution. The normalized mode is
--- the quaternion orthogonal to all distbution directions @DistDir@.
-binghamMode :: DistDir -> Quaternion
-binghamMode directions = let
+-- | Find the 4th direction normalized and orthogonal to all other distbution directions.
+lastDir :: Quaternion -> Quaternion -> Quaternion -> Quaternion
+lastDir q1 q2 q3 = let
+  dir  = DistDir (quaterVec q1) (quaterVec q2) (quaterVec q3)
   -- find the sub matrix 3x3 with the maximum abs determinat
-  dets = V.generate 4 (cutDistDir directions)
+  dets = V.generate 4 (cutDistDir dir)
   cut  = V.maxIndex $ V.map (abs . det . fst) dets
   (m, c) = dets V.! cut
   -- solve the linear system A x = b
@@ -244,7 +254,6 @@ multiNormalPDF z cv qmu qx = let
 
 -- ===================================== Bingham Fit =====================================
 
-type    Step = ((Double, Double, Double), Double)
 newtype DFF  = DFF {unDFF :: Vec4} deriving (Show)
 
 -- | Fit a Bingham distribution on a given set of quaternions using MLE (Maximum Likelihhod
@@ -260,7 +269,7 @@ fitBingham qs = let
     in unzip $ L.sortBy (\a b -> compare (fst a) (fst b)) xs
 
   -- v4 x4 will be axis with the highest eigenvalue (the highest concentration or mode)
-  ((_, axis2, axis3, axis4), dff) = let
+  ((axis1, axis2, axis3, _), dff) = let
     v                = transpose ev
     [v1, v2, v3, v4] = map getVec sortei
     [x1, x2, x3, x4] = sortex
@@ -272,13 +281,13 @@ fitBingham qs = let
     in ((v1, v2, v3, v4), DFF $ Vec4 x1 x2 x3 x4)
 
   -- z4 by definition is equal zero
-  (z1, z2, z3) = trace ("target: " ++ show dff) $ lookupConcentration dff
+  (z1, z2, z3) = lookupConcentration dff
 
   in mkBingham
      -- for positive concentrations
-     (z2-z1, mkQuaternion axis2)
-     (z3-z1, mkQuaternion axis3)
-     (  -z1, mkQuaternion axis4)
+     (z1, mkQuaternion axis1)
+     (z2, mkQuaternion axis2)
+     (z3, mkQuaternion axis3)
 
 -- | Calculates the inertia matrix that describes the distribution.
 calcInertiaMatrix :: Vector Quaternion -> Mat4
@@ -294,55 +303,37 @@ calcInertiaMatrix qs
 
 -- | Find the concentration values using the gradient descent method.
 lookupConcentration :: DFF -> (Double, Double, Double)
-lookupConcentration dY = let
-  initz     = (0, 0, 0)
-  initDelta = 100
-  numIter   = 100 :: Int
-  go 0 _    = error "[Bingham] No convertion."
-  go n step = case stepDown dY step of
-    Just next -> go (n-1) next
-    _         -> step
-  in fst $ go numIter (initz, initDelta)
+lookupConcentration dFF = unVec3 $ bfgs defaultCFG (errorFunc dFF) zero
 
-evaldFF :: (Double, Double, Double) -> DFF
-evaldFF (z1, z2, z3) = let
+evaldFF :: Vec3 -> DFF
+evaldFF (Vec3 z1 z2 z3) = let
   (f, (dFdz1, dFdz2, dFdz3, dFdz4)) = computeAllF z1 z2 z3 0
   in DFF $ Vec4 (dFdz1 / f) (dFdz2 / f) (dFdz3 / f) (dFdz4 / f)
 
 -- | Evaluates the error function.
-dFFError :: DFF -> (Double, Double, Double) -> Double
-dFFError dY z = normsqr $ (unDFF $ evaldFF z) &- (unDFF dY)
+evalError :: DFF -> Vec3 -> Double
+evalError dY z = normsqr $ (unDFF $ evaldFF z) &- (unDFF dY)
 
 -- | Calculates the partial derivatives of the error function.
-dFFErrGradient :: DFF -> (Double, Double, Double) -> (Double, Double, Double)
-dFFErrGradient dY (z1, z2, z3) = let
-  dz = 0.02
-  g  = dFFError dY (z1   , z2   , z3   )
-  g1 = dFFError dY (z1+dz, z2   , z3   )
-  g2 = dFFError dY (z1   , z2+dz, z3   )
-  g3 = dFFError dY (z1   , z2   , z3+dz)
-  dgdz1 = (g1 - g) / dz
-  dgdz2 = (g2 - g) / dz
-  dgdz3 = (g3 - g) / dz
-  in (dgdz1, dgdz2, dgdz3)
+errorFunc :: DFF -> Vec3 -> (Double, Vec3)
+errorFunc dY (Vec3 z1 z2 z3) = let
+  k = 0.001
+  fdz z
+    | z == 0    = k * k
+    | otherwise = abs $ z * k
+  dz1 = fdz z1
+  dz2 = fdz z2
+  dz3 = fdz z3
 
--- | Runs one step in the gradient descent method.
-stepDown :: DFF -> Step -> Maybe Step
-stepDown dY ((z1, z2, z3), delta)
-  | refErr > 9e-5 = next
-  | otherwise     = Nothing
-  where
-    refErr = dbg ">> errRef: " $ dFFError dY (z1, z2, z3)
-    scales = V.fromList [2.5, 1.5, 1.0, 0.5, 0.25, 0.1]
-    tries  = V.map foo scales
-    next   = V.find ((refErr >) . dFFError dY . fst) tries
-    (d1, d2, d3) = dFFErrGradient dY (z1, z2, z3)
-    foo scale = let
-      k = scale * delta
-      nz1 = z1 - k * d1
-      nz2 = z2 - k * d2
-      nz3 = z3 - k * d3
-      in ((nz1, nz2, nz3), k)
+  g   = evalError dY (Vec3  z1      z2      z3      )
+  g1  = evalError dY (Vec3 (z1+dz1) z2      z3      )
+  g2  = evalError dY (Vec3  z1     (z2+dz2) z3      )
+  g3  = evalError dY (Vec3  z1      z2      (z3+dz3))
+
+  dg1 = (g1 - g) / dz1
+  dg2 = (g2 - g) / dz2
+  dg3 = (g3 - g) / dz3
+  in (g, (Vec3 dg1 dg2 dg3))
 
 -- ====================================== Plot Space =====================================
 
@@ -474,7 +465,7 @@ testSampleFit z1 z2 z3 = let
   d3 = (z3, mkQuaternion (Vec4 0 0 0 1))
   dist = mkBingham d1 d2 d3
   in do
-    a <- sampleBingham dist 10000
+    a <- sampleBingham dist 100000
     let
       av    = V.fromList a
       dist2 = fitBingham av
