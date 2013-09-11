@@ -303,7 +303,7 @@ calcInertiaMatrix qs
 
 -- | Find the concentration values using the gradient descent method.
 lookupConcentration :: DFF -> (Double, Double, Double)
-lookupConcentration dFF = unVec3 $ bfgs defaultCFG (errorFunc dFF) zero
+lookupConcentration dFF = unVec3 $ bfgs defaultBFGS (errorFunc dFF) zero
 
 evaldFF :: Vec3 -> DFF
 evaldFF (Vec3 z1 z2 z3) = let
