@@ -332,6 +332,18 @@ errorFunc dY (Vec3 z1 z2 z3) = let
   dg3 = (g3 - g) / dz3
   in (g, (Vec3 dg1 dg2 dg3))
 
+-- =============================== Distribution product ==================================
+
+bingProduct :: Bingham -> Bingham -> Bingham
+bingProduct bing1 bing2 = let
+  f1 = normalization bing1
+  f2 = normalization bing2
+  c1 = bingMatrix bing1
+  c2 = bingMatrix bing2
+  in bing1 { normalization = f1 * f2
+           , bingMatrix    = c1 &+ c2
+           }
+
 -- ====================================== Plot Space =====================================
 
 sphere :: Int -> Int -> (Vector Vec3, Vector SphereCell)
@@ -445,12 +457,14 @@ testSample n = let
   d2 = (2, mkQuaternion (Vec4 0 0 0 (-1)))
   d3 = (1, mkQuaternion (Vec4 0 1 0   0 ))
   dist = mkBingham d1 d2 d3
+  prod = bingProduct dist dist
   in do
      a <- sampleBingham dist n
      putStrLn $ show dist
      putStrLn $ showPretty $ scatter dist
      putStrLn $ showPretty $ calcInertiaMatrix $ V.fromList a
      writeQuater "Bing-PDF-testSample" $ renderBingham dist 20
+     writeQuater "Bing-PDFProduct-testSample" $ renderBingham prod 20
      writeQuater "Bing-Samples-testSample" $ renderPoints a
      writeQuater "Euler-PDF-testSample" $ renderBinghamToEuler (Deg 5) (72, 36, 72) dist
 
