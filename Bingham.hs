@@ -53,26 +53,19 @@ data DFDzx =
 
 -- | Variance directions of the Bingham distribution. The direction must
 -- normalized and orthonogal to each other.
-data DistDir =
-  DistDir
-  { v1 :: Vec4
-  , v2 :: Vec4
-  , v3 :: Vec4
-  } deriving (Show)
+newtype DistOri = DistOri { distOri :: Mat4 } deriving (Show)
 
 data Bingham =
   Bingham
-  { concentrations :: Vec3        -- ^ concentration values for each directions where
+  { concentrations :: Vec4        -- ^ concentration values for each directions where
                                   -- z1 <= z2 <= z3 <= (z4 = 0)
-  , directions     :: DistDir     -- ^ unitary vectors Vx in rows
+  , directions     :: DistOri     -- ^ unitary vectors Vx in rows
+  , bingMatrix     :: Mat4
   , normalization  :: Double      -- ^ normalization factor F
   , bingMode       :: Quaternion  -- ^ mode of the distribution
   , partials       :: DFDzx       -- ^ partials derivates of F in each direction
   , scatter        :: Mat4        -- ^ scatter matrix
   } deriving (Show)
-
-(|>) :: DistDir -> Vec4 -> Vec3
-DistDir{..} |> v = Vec3 (v1 &. v) (v2 &. v) (v3 &. v)
 
 mkBingham :: (Double, Quaternion) -> (Double, Quaternion) -> (Double, Quaternion) -> Bingham
 mkBingham  x1 x2 x3 = let
@@ -84,29 +77,33 @@ mkBingham  x1 x2 x3 = let
   mode = snd $ last zd
   [(z1, d1), (z2, d2), (z3, d3)] = let
     zmax = fst $ last zd
-    in take 3 $ map (\(z, d) -> (z - zmax, d)) zd
+    in take 3 $ map (\(zi, di) -> (zi - zmax, di)) zd
 
   -- add check orthogonality
-  dir = DistDir (quaterVec d1) (quaterVec d2) (quaterVec d3)
-  z   = Vec3 z1 z2 z3
+  m = Mat4 (quaterVec d1) (quaterVec d2) (quaterVec d3) (quaterVec mode)
+  z = Vec4 z1 z2 z3 0
+  c = m .*. (diagMtx z) .*. (transpose m)
   -- space of 3-sphere (S3 c R4)
   (f, (dz1, dz2, dz3, _)) = computeAllF z1 z2 z3 0
   dF  = DFDzx dz1 dz2 dz3
-  s   = scatterMatrix f dir dF mode
-  in Bingham z dir f mode dF s
+  s   = scatterMatrix f (DistOri m) dF
+  in Bingham z (DistOri m) c f mode dF s
 
 -- | Eval the Bingham distribution at specific point
 binghamPDF :: Bingham -> Quaternion -> Double
 binghamPDF Bingham{..} q = let
   v = quaterVec q
-  k = concentrations &. (mapVec (\x->x*x) $ directions |> v)
+  k = (v .* bingMatrix) &. v
   in exp k / normalization
 
 -- =================================== Statistics ======================================
 
-scatterMatrix :: Double -> DistDir -> DFDzx -> Quaternion -> Mat4
-scatterMatrix f DistDir{..} DFDzx{..} qMode = let
-  mode = quaterVec qMode
+scatterMatrix :: Double -> DistOri -> DFDzx -> Mat4
+scatterMatrix f DistOri{..} DFDzx{..} = let
+  v1   = _1 distOri
+  v2   = _2 distOri
+  v3   = _3 distOri
+  mode = _4 distOri
   km = 1 - (dFdz1 + dFdz2 + dFdz3) / f
   sm = km *& outer mode mode
   s1 = (dFdz1 / f) *& outer v1 v1
@@ -116,8 +113,8 @@ scatterMatrix f DistDir{..} DFDzx{..} qMode = let
 
 -- | Break the distribution directions (3x4 matrix) in
 -- a 3x3 matrix by extracting the colunm n.
-cutDistDir :: DistDir -> Int -> (Mat3, Vec3)
-cutDistDir DistDir{..} n
+cutDistOri :: (Vec4, Vec4, Vec4) -> Int -> (Mat3, Vec3)
+cutDistOri (v1, v2, v3) n
   | n == 0    = (mkMat cut0, mkVec _1)
   | n == 1    = (mkMat cut1, mkVec _2)
   | n == 2    = (mkMat cut2, mkVec _3)
@@ -133,9 +130,9 @@ cutDistDir DistDir{..} n
 -- | Find the 4th direction normalized and orthogonal to all other distbution directions.
 lastDir :: Quaternion -> Quaternion -> Quaternion -> Quaternion
 lastDir q1 q2 q3 = let
-  dir  = DistDir (quaterVec q1) (quaterVec q2) (quaterVec q3)
+  dir  = (quaterVec q1, quaterVec q2, quaterVec q3)
   -- find the sub matrix 3x3 with the maximum abs determinat
-  dets = V.generate 4 (cutDistDir dir)
+  dets = V.generate 4 (cutDistOri dir)
   cut  = V.maxIndex $ V.map (abs . det . fst) dets
   (m, c) = dets V.! cut
   -- solve the linear system A x = b
