@@ -253,38 +253,31 @@ multiNormalPDF z cv qmu qx = let
 
 newtype DFF  = DFF {unDFF :: Vec4} deriving (Show)
 
+decomposeScatter :: Mat4 -> (Vec4, Mat4)
+decomposeScatter scatter = let
+  (ev, ex) = symmEigen scatter
+  -- sort decomposition by eigenvalues (highest eigenvalue -> highest concentration value)
+  v = transpose ev
+  xs = zip [_1 ex, _2 ex, _3 ex, _4 ex] [_1 v, _2 v, _3 v, _4 v]
+  (sortex, sortev) = unzip $ L.sortBy (\a b -> compare (fst a) (fst b)) xs
+  -- v4 x4 will be axis with the highest eigenvalue (the highest concentration or mode)
+  [v1, v2, v3, v4] = sortev
+  [x1, x2, x3, x4] = sortex
+  in (Vec4 x1 x2 x3 x4, Mat4 v1 v2 v3 v4)
+
 -- | Fit a Bingham distribution on a given set of quaternions using MLE (Maximum Likelihhod
 -- Estimation) to determine the concentration values.
 fitBingham :: Vector Quaternion -> Bingham
 fitBingham qs = let
   scatter = calcInertiaMatrix qs
-
-  (ev, ex) = symmEigen scatter
-  -- sort decomposition by eigenvalues (highest eigenvalue -> highest concentration value)
-  (sortex, sortei) = let
-    xs = zip [_1 ex, _2 ex, _3 ex, _4 ex] [1 :: Int ..]
-    in unzip $ L.sortBy (\a b -> compare (fst a) (fst b)) xs
-
-  -- v4 x4 will be axis with the highest eigenvalue (the highest concentration or mode)
-  ((axis1, axis2, axis3, _), dff) = let
-    v                = transpose ev
-    [v1, v2, v3, v4] = map getVec sortei
-    [x1, x2, x3, x4] = sortex
-    getVec i
-      | i == 1    = _1 v
-      | i == 2    = _2 v
-      | i == 3    = _3 v
-      | otherwise = _4 v
-    in ((v1, v2, v3, v4), DFF $ Vec4 x1 x2 x3 x4)
-
+  (eval, evec) = decomposeScatter scatter
   -- z4 by definition is equal zero
-  (z1, z2, z3) = lookupConcentration dff
-
+  (z1, z2, z3) = lookupConcentration (DFF eval)
   in mkBingham
      -- for positive concentrations
-     (z1, mkQuaternion axis1)
-     (z2, mkQuaternion axis2)
-     (z3, mkQuaternion axis3)
+     (z1, mkQuaternion $ _1 evec)
+     (z2, mkQuaternion $ _2 evec)
+     (z3, mkQuaternion $ _3 evec)
 
 -- | Calculates the inertia matrix that describes the distribution.
 calcInertiaMatrix :: Vector Quaternion -> Mat4
