@@ -111,20 +111,21 @@ getSO3Grid :: Int -> Int -> Int -> Vector SO3
 getSO3Grid nOmega nTheta nPhi = let
   step_w = pi / (fromIntegral nOmega)
   sphere = getSO2Grid nTheta nPhi
-  ws     = V.generate (nOmega - 1) ((step_w *) . fromIntegral)
+  ws     = V.generate (nOmega+1) ((step_w *) . fromIntegral)
   func w = V.map (so2ToSO3 w) sphere
   in V.concatMap func ws
 
 getSO3Cells :: Int -> Int -> Int -> Vector SO3Cell
 getSO3Cells nOmega nTheta nPhi = let
   so2cells = getSO2Cells nTheta nPhi
+  layers   = V.enumFromN 0 nOmega
   -- number of points according to getSO2Grid
   psSize   = (nTheta - 1) * nPhi + 2
   func i (SO2Cell (a,b,c,d)) = let
     k1 = psSize * i
     k2 = psSize * (i + 1)
     in SO3Cell (a+k1, b+k1, c+k1, d+k1, a+k2, b+k2, c+k2, d+k2)
-  in V.concatMap (\i -> V.map (func i) so2cells) $ V.enumFromN 0 (nOmega-2)
+  in V.concatMap (\i -> V.map (func i) so2cells) layers
 
 newtype SO3Cell = SO3Cell (Int, Int, Int, Int, Int, Int, Int, Int)
 
