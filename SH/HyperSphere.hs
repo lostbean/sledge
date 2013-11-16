@@ -15,6 +15,8 @@ module Hammer.Texture.SH.HyperSphere
        , so2ToSO3
          -- * Unity Hyper-Sphere (SO3)
        , SO3 (..)
+       , so3ToQuaternion
+       , quaternionToSO3
        , so3ToCart
        , getSO3Grid
        , so3ToSO2
@@ -35,6 +37,7 @@ import qualified Data.Vector.Unboxed as U
 import           Data.Vector         (Vector)
 
 import           Hammer.Math.Algebra
+import           Hammer.Texture.Orientation
 import           Hammer.Render.VTK.VTKRender
 
 import           Debug.Trace
@@ -54,6 +57,13 @@ data SO3 =
   , so3Phi   :: Double
   } deriving (Show)
 
+cartToSO2 :: Double -> Double -> SO2
+cartToSO2 x1 x2 = let
+  x = 2 * x1 * sqrt (1 - x1*x1 - x2*x2)
+  y = 2 * x2 * sqrt (1 - x1*x1 - x2*x2)
+  z = 1 - 2 * (x1*x1 + x2*x2)
+  in SO2 {so2Theta = acos z, so2Phi = atan (y / x)}
+
 -- ========================================= SO2 =========================================
 
 so2ToCart :: SO2 -> Vec3
@@ -65,6 +75,19 @@ so2ToCart SO2{..} = let
 
 so2ToSO3 :: Double -> SO2 -> SO3
 so2ToSO3 x SO2{..} = SO3 {so3Omega = x, so3Theta = so2Theta, so3Phi = so2Phi}
+
+getSO2IsoGrid :: Int -> Int -> Vector SO2
+getSO2IsoGrid nTheta nPhi = let
+  step_theta =     1  / (fromIntegral nTheta)
+  step_phi   = 2 * pi / (fromIntegral nPhi)
+  funcSO2 ip it = let
+    t = acos $ 1 - 2 * step_theta * (fromIntegral it)
+    p = step_phi * (fromIntegral ip)
+    in SO2 {so2Theta = t, so2Phi = p}
+  qlm = V.fromList [ (funcSO2 np nt) | nt <- [1..nTheta-1], np <- [0..nPhi-1] ]
+  q0  = SO2 0 0
+  qn  = SO2 {so2Theta = pi, so2Phi = 2*pi}
+  in q0 `V.cons` qlm `V.snoc` qn
 
 getSO2Grid :: Int -> Int -> Vector SO2
 getSO2Grid nTheta nPhi = let
@@ -101,6 +124,24 @@ instance RenderCell SO2Cell where
 
 -- ========================================= SO3 =========================================
 
+so3ToQuaternion :: SO3 -> Quaternion
+so3ToQuaternion SO3{..} = let
+  q0 = cos so3Omega
+  sT = sin so3Theta
+  sO = sin so3Omega
+  q1 = sO * sT * cos so3Phi
+  q2 = sO * sT * sin so3Phi
+  q3 = sO * cos so3Theta
+  in mkQuaternion $ Vec4 q0 q1 q2 q3
+
+quaternionToSO3 :: Quaternion -> SO3
+quaternionToSO3 q = let
+  (q0, Vec3 q1 _ q3) = splitQuaternion q
+  omega = acos q0
+  theta = acos $ q3 / sin omega
+  phi   = acos $ q1 / (sin omega * sin theta)
+  in SO3 {so3Omega = omega, so3Theta = theta, so3Phi = phi}
+
 so3ToCart :: SO3 -> Vec3
 so3ToCart x = (so3Omega x) *& (so2ToCart $ so3ToSO2 x)
 
@@ -111,7 +152,20 @@ getSO3Grid :: Int -> Int -> Int -> Vector SO3
 getSO3Grid nOmega nTheta nPhi = let
   step_w = pi / (fromIntegral nOmega)
   sphere = getSO2Grid nTheta nPhi
-  ws     = V.generate (nOmega+1) ((step_w *) . fromIntegral)
+  getW   = (step_w *) . fromIntegral
+  ws     = V.generate (nOmega+1) getW
+  func w = V.map (so2ToSO3 w) sphere
+  in V.concatMap func ws
+
+getSO3IsoGrid :: Int -> Int -> Int -> Vector SO3
+getSO3IsoGrid nOmega nTheta nPhi = let
+  step_w = 2 * pi / (fromIntegral nOmega)
+  sphere = getSO2IsoGrid nTheta nPhi
+  getW   = (step_w *) . fromIntegral
+  foo i  = let
+    w = getW i
+    in (3 / 4 * (w - sin w)) ** (1 / 3)
+  ws     = V.generate (nOmega+1) foo
   func w = V.map (so2ToSO3 w) sphere
   in V.concatMap func ws
 
@@ -138,16 +192,16 @@ instance RenderCell SO3Cell where
 
 mkSO2 :: Int -> Int -> (Vector SO2, VTK Vec3)
 mkSO2 nTheta nPhi = let
-  cells = getSO2Cells nTheta nPhi
-  grid  = getSO2Grid  nTheta nPhi
+  cells = getSO2Cells   nTheta nPhi
+  grid  = getSO2IsoGrid nTheta nPhi
   ps    = V.map so2ToCart grid
   vtk   = mkUGVTK "Sphere" (V.convert ps) cells
   in (grid, vtk)
 
 mkSO3 :: Int -> Int -> Int -> (Vector SO3, VTK Vec3)
 mkSO3 nOmega nTheta nPhi = let
-  cells = getSO3Cells nOmega nTheta nPhi
-  grid  = getSO3Grid  nOmega nTheta nPhi
+  cells = getSO3Cells   nOmega nTheta nPhi
+  grid  = getSO3IsoGrid nOmega nTheta nPhi
   ps    = V.map so3ToCart grid
   vtk   = mkUGVTK "Hyper-sphere" (V.convert ps) cells
   in (grid, vtk)
