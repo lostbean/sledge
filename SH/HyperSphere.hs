@@ -57,12 +57,10 @@ data SO3 =
   , so3Phi   :: Double
   } deriving (Show)
 
-cartToSO2 :: Double -> Double -> SO2
-cartToSO2 x1 x2 = let
-  x = 2 * x1 * sqrt (1 - x1*x1 - x2*x2)
-  y = 2 * x2 * sqrt (1 - x1*x1 - x2*x2)
-  z = 1 - 2 * (x1*x1 + x2*x2)
-  in SO2 {so2Theta = acos z, so2Phi = atan (y / x)}
+cartToSO2 :: Vec3 -> SO2
+cartToSO2 n = let
+  s = len n
+  in SO2 {so2Theta = acos (_3 n / s), so2Phi = atan (_2 n / _1 n)}
 
 -- ========================================= SO2 =========================================
 
@@ -126,9 +124,9 @@ instance RenderCell SO2Cell where
 
 so3ToQuaternion :: SO3 -> Quaternion
 so3ToQuaternion SO3{..} = let
-  q0 = cos so3Omega
+  q0 = cos (so3Omega / 2)
+  sO = sin (so3Omega / 2)
   sT = sin so3Theta
-  sO = sin so3Omega
   q1 = sO * sT * cos so3Phi
   q2 = sO * sT * sin so3Phi
   q3 = sO * cos so3Theta
@@ -136,11 +134,10 @@ so3ToQuaternion SO3{..} = let
 
 quaternionToSO3 :: Quaternion -> SO3
 quaternionToSO3 q = let
-  (q0, Vec3 q1 _ q3) = splitQuaternion q
-  omega = acos q0
-  theta = acos $ q3 / sin omega
-  phi   = acos $ q1 / (sin omega * sin theta)
-  in SO3 {so3Omega = omega, so3Theta = theta, so3Phi = phi}
+  (q0, qv) = splitQuaternion q
+  so2   = cartToSO2 qv
+  omega = 2 * acos q0
+  in so2ToSO3 omega so2
 
 so3ToCart :: SO3 -> Vec3
 so3ToCart x = (so3Omega x) *& (so2ToCart $ so3ToSO2 x)
@@ -193,7 +190,7 @@ instance RenderCell SO3Cell where
 mkSO2 :: Int -> Int -> (Vector SO2, VTK Vec3)
 mkSO2 nTheta nPhi = let
   cells = getSO2Cells   nTheta nPhi
-  grid  = getSO2IsoGrid nTheta nPhi
+  grid  = getSO2Grid nTheta nPhi
   ps    = V.map so2ToCart grid
   vtk   = mkUGVTK "Sphere" (V.convert ps) cells
   in (grid, vtk)
@@ -201,7 +198,7 @@ mkSO2 nTheta nPhi = let
 mkSO3 :: Int -> Int -> Int -> (Vector SO3, VTK Vec3)
 mkSO3 nOmega nTheta nPhi = let
   cells = getSO3Cells   nOmega nTheta nPhi
-  grid  = getSO3IsoGrid nOmega nTheta nPhi
+  grid  = getSO3Grid nOmega nTheta nPhi
   ps    = V.map so3ToCart grid
   vtk   = mkUGVTK "Hyper-sphere" (V.convert ps) cells
   in (grid, vtk)
