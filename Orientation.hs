@@ -151,7 +151,9 @@ newtype Rodrigues =
 newtype RotMatrix =
   RotMatrix
   { rotMat :: Mat3
-  } deriving (MultSemiGroup, Matrix, Eq)
+  } deriving (MultSemiGroup, Transposable, Inversable, IdMatrix, Eq)
+
+instance Matrix RotMatrix
 
 -- ==================================  Angle class ===================================
 
