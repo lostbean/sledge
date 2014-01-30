@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module Hammer.Texture.TesseractGrid
        ( TesseractPoint (..)
        , TesseractGrid (..)
@@ -19,8 +21,11 @@ import qualified Data.List           as L
 import qualified Data.Vector         as V
 import qualified Data.Vector.Unboxed as U
 
-import           Data.Vector         (Vector)
+import           Data.Vector  (Vector)
+import           GHC.Generics (Generic)
 
+import           Data.Vector.Binary
+import           Data.Binary
 import           System.Random
 
 import           Hammer.Math.Algebra
@@ -44,7 +49,9 @@ data TesseractGrid a
     , cell2    :: Vector a
     , cell3    :: Vector a
     , cell4    :: Vector a
-    } deriving (Show)
+    } deriving (Show, Generic)
+
+instance (Binary a)=> Binary (TesseractGrid a)
 
 tesseractToQuaternion :: TesseractPoint -> Quaternion
 tesseractToQuaternion tp = case tp of
