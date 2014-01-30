@@ -152,20 +152,26 @@ tesseractMap func ta = ta { cell1 = V.map func (cell1 ta)
 
 -- ============================= Test Function =========================================== 
 
-testNormalization :: IO (TesseractGrid Double)
-testNormalization = let
+testBinning :: IO (TesseractGrid Double)
+testBinning = let
+  n  = 10000000
+  m  = 10
+  genqs = V.fromList . take n . randoms
   in do
     gen <- newStdGen
-    let
-      n  = 100000
-      m  = 10
-      qs = V.fromList $ take n $ randoms gen
-      ns = genTesseractGrid m volumeGridCell
-      bs = binningTesseract m qs
-      k  = (fromIntegral n) / (fromIntegral $ 4*m*m*m)
-    return $ tesseractMap (/k) $ tesseractZipWith (*) ns bs
+    return $ binningTesseract m (genqs gen)
 
-printTesseract :: TesseractGrid Double -> String -> IO ()
+testNormalization :: IO (TesseractGrid Double)
+testNormalization = let
+  n  = 10000000 :: Int
+  m  = 10 :: Int
+  ns = genTesseractGrid m volumeGridCell
+  k  = (fromIntegral n) / (fromIntegral $ 4*m*m*m)
+  in do
+    ts <- testBinning
+    return $ tesseractMap (/k) $ tesseractZipWith (*) ns ts
+
+printTesseract :: (RenderElemVTK a)=> TesseractGrid a -> String -> IO ()
 printTesseract t name = let
   m     = gridSize t
   step  = 2 / (fromIntegral m)
