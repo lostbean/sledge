@@ -1,5 +1,5 @@
 name:           sledge
-version:        0.2.0
+version:        0.3.0
 cabal-version:  >= 1.8
 build-type:     Simple
 license:        GPL-3
@@ -21,12 +21,12 @@ Flag test
     Description:        Build the exectable using command line.
     Default:            False
 
-Executable hammer-profile
+Executable sledge-profile
     main-is:           Main.hs
     if flag(test)
        build-depends: sledge
                      , optparse-applicative >= 0.5
-                     , hammer               >= 0.2
+                     , hammer               >= 0.3
                      , array                >= 0.4
                      , base                 == 4.*
                      , vector               >= 0.10
@@ -53,7 +53,7 @@ Executable hammer-profile
 
 Library
   build-depends:  base                    == 4.*
-                , hammer                  >= 0.2
+                , hammer                  >= 0.3
                 , array                   >= 0.4
                 , containers              >= 0.4.2.1
                 , vector                  >= 0.10
