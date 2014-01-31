@@ -56,10 +56,10 @@ Library
                 , hammer                  >= 0.2
                 , array                   >= 0.4
                 , containers              >= 0.4.2.1
-                , unordered-containers    >= 0.2
-                , hashable                >= 1.2
                 , vector                  >= 0.10
                 , vector-algorithms       >= 0.5
+                , bytestring              >= 0.10
+                , text                    >= 0.11
                 , binary                  >= 0.7
                 , vector-binary-instances >= 0.2
                 , primitive               >= 0.5
@@ -67,10 +67,8 @@ Library
                 , random                  >= 1.0
                 , parallel                >= 3.0
                 , deepseq                 >= 1.2
-                , xmlgen                  >= 0.6
+                , attoparsec              >= 0.8
                 , blaze-builder           >= 0.3
-                , base64-bytestring       >= 1.0
-                , criterion               >= 0.6
                 , hmatrix                 >= 0.15
 
   exposed-modules:  Texture.Symmetry
@@ -85,6 +83,9 @@ Library
                     Texture.SH.SupportFunctions
                     Texture.SH.Rotation
                     Texture.SH.HyperSphere
+
+                    File.ANGReader
+                    File.ANGWriter
 
   other-modules:    Texture.BinghamConstant
 
