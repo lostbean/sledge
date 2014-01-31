@@ -3,7 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- |
--- Module      : Hammer.Texture.Symmetry
+-- Module      : Texture.Symmetry
 -- Copyright   : (c) 2013 Edgar Gomes
 -- License     : Privete-style (see LICENSE)
 --
@@ -13,7 +13,7 @@
 --
 -- Module to calculate symmetry in crystal orientations.
 --
-module Hammer.Texture.Symmetry
+module Texture.Symmetry
        ( Symm (..)
        , toFZ
        , toFZGeneric
@@ -40,7 +40,7 @@ import qualified Data.Vector as V
 import           Data.Vector    (Vector)
 
 import           Hammer.Math.Algebra
-import           Hammer.Texture.Orientation
+import           Texture.Orientation
 
 --import           Debug.Trace
 --dbg s x = trace (s ++ show x) x

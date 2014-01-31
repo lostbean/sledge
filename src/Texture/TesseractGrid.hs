@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-module Hammer.Texture.TesseractGrid
+module Texture.TesseractGrid
        ( TesseractPoint (..)
        , TesseractGrid (..)
        , tesseractToQuaternion
@@ -29,7 +29,7 @@ import           Data.Binary
 import           System.Random
 
 import           Hammer.Math.Algebra
-import           Hammer.Texture.Orientation
+import           Texture.Orientation
 import           Hammer.Render.VTK.VTKRender
 
 import           Debug.Trace

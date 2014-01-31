@@ -3,7 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- |
--- Module      : Hammer.Texture.Orientation
+-- Module      : Texture.Orientation
 -- Copyright   : (c) 2013 Edgar Gomes
 -- License     : Privete-style (see LICENSE)
 --
@@ -27,7 +27,7 @@
 --
 --  * Orientation Library Manual by Romain Quey
 --
-module Hammer.Texture.Orientation
+module Texture.Orientation
        (  -- * Reference Frame
          RefFrame (..)
           -- * Angles

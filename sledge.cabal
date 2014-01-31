@@ -1,0 +1,101 @@
+name:           sledge
+version:        0.2.0
+cabal-version:  >= 1.8
+build-type:     Simple
+license:        GPL-3
+license-file:   LICENSE
+maintainer:     Edgar Gomes de Araujo
+stability:      experimental
+homepage:
+package-url:
+bug-reports:    talktoedgar@gmail.com
+synopsis:       Basic tools for texture in polycrystal materials
+description: Library with tools for metalurgical research. Includes:
+ - Rotation representation and opreretions
+ - Texture representation by Spherical Harmonics and Bingham distribution.
+ Aim of this library is also performance and multi-core ready.
+category:       Math
+author:         Edgar Gomes de Araujo
+
+Flag test
+    Description:        Build the exectable using command line.
+    Default:            False
+
+Executable hammer-profile
+    main-is:           Main.hs
+    if flag(test)
+       build-depends: sledge
+                     , optparse-applicative >= 0.5
+                     , hammer               >= 0.2
+                     , array                >= 0.4
+                     , base                 == 4.*
+                     , vector               >= 0.10
+                     , random               >= 1.0
+                     , hmatrix              >= 0.15
+                     , unordered-containers >= 0.2
+                     , QuickCheck           >= 2.5
+
+       hs-source-dirs: profile
+
+       ghc-options:
+                       -Wall
+                       -O2
+                       -rtsopts
+                       -funbox-strict-fields
+                       -threaded
+                       -- -eventlog
+                       -auto-all
+                       -caf-all
+
+       Buildable:      True
+    else
+       Buildable:      False
+
+Library
+  build-depends:  base                    == 4.*
+                , hammer                  >= 0.2
+                , array                   >= 0.4
+                , containers              >= 0.4.2.1
+                , unordered-containers    >= 0.2
+                , hashable                >= 1.2
+                , vector                  >= 0.10
+                , vector-algorithms       >= 0.5
+                , binary                  >= 0.7
+                , vector-binary-instances >= 0.2
+                , primitive               >= 0.5
+                , gamma                   >= 0.9
+                , random                  >= 1.0
+                , parallel                >= 3.0
+                , deepseq                 >= 1.2
+                , xmlgen                  >= 0.6
+                , blaze-builder           >= 0.3
+                , base64-bytestring       >= 1.0
+                , criterion               >= 0.6
+                , hmatrix                 >= 0.15
+
+  exposed-modules:  Texture.Symmetry
+                    Texture.Orientation
+                    Texture.SphereProjection
+                    Texture.TesseractGrid
+                    Texture.IPF
+                    Texture.Bingham
+                    Texture.SphericalHarmonics
+
+                    Texture.SH.Pyramid
+                    Texture.SH.SupportFunctions
+                    Texture.SH.Rotation
+                    Texture.SH.HyperSphere
+
+  other-modules:    Texture.BinghamConstant
+
+  exposed:        True
+  buildable:      True
+  hs-source-dirs: src
+  ghc-options:    -O2
+                  -rtsopts
+                  -Wall
+                  -funbox-strict-fields
+                  -threaded
+                  -- -eventlog
+                  -auto-all
+                  -caf-all

@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards            #-}
 
 -- |
--- Module      : Hammer.Texture.IPF
+-- Module      : Texture.IPF
 -- Copyright   : (c) 2013 Edgar Gomes
 -- License     : Privete-style (see LICENSE)
 --
@@ -30,7 +30,7 @@
 -- two colors are given by ratio between its correspondent angle and the largest angle
 -- (e.g. @red = alphaBR/alphaRG@ and @blue = alphaGB/alphaRG@).
 --
-module Hammer.Texture.IPF
+module Texture.IPF
        ( invPole
        , getIPFColor
        , genIPFLegend
@@ -47,9 +47,9 @@ import           Data.Vector (Vector)
 import           System.Random
 
 import           Hammer.Math.Algebra
-import           Hammer.Texture.Orientation
-import           Hammer.Texture.SphereProjection
-import           Hammer.Texture.Symmetry
+import           Texture.Orientation
+import           Texture.SphereProjection
+import           Texture.Symmetry
 
 --import           Debug.Trace
 --dbg s x = trace (s ++ show x) x

@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 
-module Hammer.Texture.Bingham
+module Texture.Bingham
        ( Bingham
        , concentrations
        , directions
@@ -37,8 +37,8 @@ import           System.Random       (randomIO, randoms, newStdGen)
 
 import           Hammer.Math.Algebra
 import           Hammer.Math.Optimum
-import           Hammer.Texture.Orientation
-import           Hammer.Texture.BinghamConstant
+import           Texture.Orientation
+import           Texture.BinghamConstant
 import           Hammer.Render.VTK.VTKRender
 
 import           Debug.Trace

@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards            #-}
 
 -- |
--- Module      : Hammer.Texture.SphereProjection
+-- Module      : Texture.SphereProjection
 -- Copyright   : (c) 2013 Edgar Gomes
 -- License     : Privete-style (see LICENSE)
 --
@@ -13,7 +13,7 @@
 --
 -- This module defines SO3 sphere projections.
 --
-module Hammer.Texture.SphereProjection
+module Texture.SphereProjection
        ( SO3Proj
        , lambertSO3Proj
        , steroSO3Proj

@@ -7,7 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE TypeFamilies               #-}
 
-module Hammer.Texture.SH.HyperSphere
+module Texture.SH.HyperSphere
        ( -- * Unity Sphere (SO2)
          SO2 (..)
        , so2ToCart
@@ -37,7 +37,7 @@ import qualified Data.Vector.Unboxed as U
 import           Data.Vector         (Vector)
 
 import           Hammer.Math.Algebra
-import           Hammer.Texture.Orientation
+import           Texture.Orientation
 import           Hammer.Render.VTK.VTKRender
 
 import           Debug.Trace
