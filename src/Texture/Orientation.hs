@@ -58,6 +58,7 @@ module Texture.Orientation
          -- * Frank-Rodrigues
        , Rodrigues  (rodriVec)
        , mkRodrigues
+       , mkUnsafeRodrigues
          -- * Matrix
        , RotMatrix  (rotMat)
        , mkUnsafeRotMatrix
@@ -95,6 +96,7 @@ data RefFrame = ND
 
 -- | Unit quaternion representation of orientation (rotation).
 -- It is the basic and central representation used in this module.
+-- Uses all directions with rotations from 0 to PI.
 newtype Quaternion =
   Quaternion
   { quaterVec :: Vec4
@@ -194,7 +196,13 @@ mkEuler p1 p p2 = Euler
 
 -- | Safe constructor for quaternions
 mkQuaternion :: Vec4 -> Quaternion
-mkQuaternion = Quaternion . normalize
+mkQuaternion v
+  | l == 0    = Quaternion (Vec4 0 0 0 1)
+  | q0 > 0    = Quaternion (v &* (1/l))
+  | otherwise = Quaternion (v &* (-1/l))
+  where
+    l  = len v
+    q0 = _1 v
 
 -- | Constructor for Frank-Rodrigues.
 mkRodrigues :: (Angle ang)=> Vec3 -> ang -> Rodrigues
@@ -215,12 +223,18 @@ mergeQuaternion (q0, Vec3 q1 q2 q3) = mkQuaternion (Vec4 q0 q1 q2 q3)
 
 -- | /Unsafe/ quaternion constructor. It assumes a normalized input.
 mkUnsafeQuaternion :: Vec4 -> Quaternion
-mkUnsafeQuaternion = Quaternion
+mkUnsafeQuaternion v
+  | (_1 v) > 0 = Quaternion v
+  | otherwise  = Quaternion $ neg v
 
 -- | /Unsafe/ rotation matrix constructor. It assumes a orthonormal matrix with
 -- unitary vector as input.
 mkUnsafeRotMatrix :: Mat3 -> RotMatrix
 mkUnsafeRotMatrix = RotMatrix
+
+-- | /Unsafe/ Frank-Rodrigues constructor.
+mkUnsafeRodrigues :: Vec3 -> Rodrigues
+mkUnsafeRodrigues = Rodrigues
 
 -- | /Unsafe/ quaternion merging constructor. It assumes a normalized input where
 -- the single value and the vector in @R3@ form a unit vector in @R4@ (unit quaternion).
@@ -369,7 +383,7 @@ instance Rot Euler where
     q1 = s * (cos dphi)
     q2 = s * (sin dphi)
     q3 = c * (sin aphi)
-    in Quaternion (Vec4 q0 q1 q2 q3)
+    in mkUnsafeQuaternion (Vec4 q0 q1 q2 q3)
   fromQuaternion (Quaternion (Vec4 q0 q1 q2 q3))
     | phi == 0  = Euler (2 * acosSafe q0) phi 0 -- zero by convesion
     | phi == pi = Euler (2 * acosSafe q1) phi 0 -- zero by convesion
@@ -482,7 +496,7 @@ passiveVecRotation v q = let
 -- close to @negU q1@) in the space of quaternions (but they are very close
 -- in the space of rotations).
 quaterInterpolation :: Double -> Quaternion -> Quaternion -> Quaternion
-quaterInterpolation t (Quaternion pa) (Quaternion pb) = Quaternion v
+quaterInterpolation t (Quaternion pa) (Quaternion pb) = mkUnsafeQuaternion v
   where
     v = (p &* y) &+ (pb &* yb)
 
