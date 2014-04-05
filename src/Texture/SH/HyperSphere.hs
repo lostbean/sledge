@@ -11,6 +11,7 @@ module Texture.SH.HyperSphere
        ( -- * Unity Sphere (SO2)
          SO2 (..)
        , so2ToCart
+       , cartToSO2
        , getSO2Grid
        , so2ToSO3
          -- * Unity Hyper-Sphere (SO3)
@@ -60,7 +61,7 @@ data SO3 =
 cartToSO2 :: Vec3 -> SO2
 cartToSO2 n = let
   s = len n
-  in SO2 {so2Theta = acos (_3 n / s), so2Phi = atan (_2 n / _1 n)}
+  in SO2 {so2Theta = acos (_3 n / s), so2Phi = atan2 (_2 n) (_1 n)}
 
 -- ========================================= SO2 =========================================
 

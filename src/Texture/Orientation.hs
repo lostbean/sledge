@@ -66,6 +66,8 @@ module Texture.Orientation
        , activeVecRotation
        , passiveVecRotation
          -- * Other functions
+       , getRTNdir
+       , get100dir
        , quaterInterpolation
        , aproxToIdealAxis
        ) where
@@ -440,6 +442,16 @@ mat2quat (RotMatrix m)
     q3_0 = sqrt $ (g33 + 1) / 2
 
 -- ================================== Other functions ==================================
+
+-- | Get the RD, TD and ND directions in the crystal frame.
+getRTNdir :: RotMatrix -> (Vec3, Vec3, Vec3)
+getRTNdir (RotMatrix m) = let
+  ( Mat3 rd td nd ) = transpose m
+  in (rd, td, nd)
+
+-- | Get the axis [100] (crystal base) in the sample frame.
+get100dir :: RotMatrix -> (Vec3, Vec3, Vec3)
+get100dir (RotMatrix (Mat3 e1 e2 e3)) = (e1, e2, e3)
 
 -- | Converts an angle in Radians from the @[0, 2*pi]@ range to @[-pi, pi]@ range.
 getAbsShortAngle :: Double -> Double
