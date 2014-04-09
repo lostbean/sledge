@@ -78,6 +78,10 @@ import Numeric
 import Hammer.Math.Algebra
 import System.Random
 
+import Data.Vector.Generic.Base
+import Data.Vector.Generic.Mutable
+import qualified Data.Vector.Unboxed as U
+
 -- import Debug.Trace
 -- dbg s x = trace (s ++ show x) x
 
@@ -102,7 +106,7 @@ data RefFrame = ND
 newtype Quaternion =
   Quaternion
   { quaterVec :: Vec4
-  } deriving (Eq)
+  } deriving (Eq, Vector U.Vector, MVector U.MVector, U.Unbox)
 
 instance Random Quaternion where
   random             = randomR (zerorot, zerorot)
@@ -143,19 +147,20 @@ data Euler =
 newtype AxisPair =
   AxisPair
   { axisAngle :: (Vec3, Double)
-  } deriving (Eq)
+  } deriving (Eq, Vector U.Vector, MVector U.MVector, U.Unbox)
 
 -- | Frank-Rodrigues representation.
 newtype Rodrigues =
   Rodrigues
   { rodriVec :: Vec3
-  } deriving (Eq)
+  } deriving (Eq, Vector U.Vector, MVector U.MVector, U.Unbox)
 
 -- | Frank-Rodrigues representation.
 newtype RotMatrix =
   RotMatrix
   { rotMat :: Mat3
-  } deriving (MultSemiGroup, Transposable, Inversable, IdMatrix, Eq)
+  } deriving ( MultSemiGroup, Transposable, Inversable, IdMatrix
+             , Eq, Vector U.Vector, MVector U.MVector, U.Unbox   )
 
 instance Matrix RotMatrix
 
