@@ -13,6 +13,7 @@ module Texture.SH.HyperSphere
        , so2ToCart
        , cartToSO2
        , getSO2Grid
+       , getSO2IsoGrid
        , so2ToSO3
          -- * Unity Hyper-Sphere (SO3)
        , SO3 (..)
@@ -20,6 +21,7 @@ module Texture.SH.HyperSphere
        , quaternionToSO3
        , so3ToCart
        , getSO3Grid
+       , getSO3IsoGrid
        , so3ToSO2
          -- * VTK Ploting
        , mkSO2
