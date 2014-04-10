@@ -37,9 +37,10 @@ import           System.Random       (randomIO, randoms, newStdGen)
 
 import           Hammer.Math.Algebra
 import           Hammer.Math.Optimum
+import           Hammer.VTK
+
 import           Texture.Orientation
 import           Texture.BinghamConstant
-import           Hammer.Render.VTK.VTKRender
 
 import           Debug.Trace
 dbg s x = trace (s L.++ show x) x

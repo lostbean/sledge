@@ -26,7 +26,7 @@ Executable sledge-profile
     if flag(test)
        build-depends: sledge
                      , optparse-applicative >= 0.5
-                     , hammer               >= 0.3
+                     , hammer               >= 0.4
                      , array                >= 0.4
                      , base                 == 4.*
                      , vector               >= 0.10
@@ -53,7 +53,7 @@ Executable sledge-profile
 
 Library
   build-depends:  base                    == 4.*
-                , hammer                  >= 0.3
+                , hammer                  >= 0.4
                 , array                   >= 0.4
                 , containers              >= 0.4.2.1
                 , vector                  >= 0.10

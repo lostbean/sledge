@@ -29,8 +29,8 @@ import           Data.Binary
 import           System.Random
 
 import           Hammer.Math.Algebra
+import           Hammer.VTK
 import           Texture.Orientation
-import           Hammer.Render.VTK.VTKRender
 
 import           Debug.Trace
 dbg s x = trace (s L.++ show x) x

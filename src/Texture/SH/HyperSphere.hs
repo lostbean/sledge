@@ -44,8 +44,9 @@ import           Data.Vector.Unboxed         (Vector)
 import           Control.Monad               (liftM)
 
 import           Hammer.Math.Algebra
+import           Hammer.VTK
+
 import           Texture.Orientation
-import           Hammer.Render.VTK.VTKRender
 
 import           Debug.Trace
 dbg s x = trace (s L.++ show x) x
