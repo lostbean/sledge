@@ -27,12 +27,14 @@ module Texture.Bingham
        , testSampleFit
        ) where
 
-import qualified Data.List           as L
-import qualified Data.Vector         as V
-import qualified Data.Vector.Unboxed as U
+import qualified Data.List                   as L
+import qualified Data.Vector                 as V
+import qualified Data.Vector.Unboxed         as U
+import qualified Data.Vector.Generic.Base    as GB
+import qualified Data.Vector.Generic.Mutable as GM
 
 import           Control.Applicative ((<$>))
-import           Data.Vector         (Vector)
+import           Data.Vector.Unboxed (Vector)
 import           System.Random       (randomIO, randoms, newStdGen)
 
 import           Hammer.Math.Algebra
@@ -254,6 +256,9 @@ multiNormalPDF z cv qmu qx = let
 
 newtype DFF  = DFF {unDFF :: Vec4} deriving (Show)
 
+-- | Derive the main distribution axes and their relative intensities from an scatter matrix.
+-- The output is given in crescent order of intensity, therefore, the last pair (intensity, axis)
+-- is the distribution mode.
 decomposeScatter :: Mat4 -> (Vec4, Mat4)
 decomposeScatter scatter = let
   (ev, ex) = symmEigen scatter
@@ -270,7 +275,7 @@ decomposeScatter scatter = let
 -- Estimation) to determine the concentration values.
 fitBingham :: Vector Quaternion -> Bingham
 fitBingham qs = let
-  scatter = calcInertiaMatrix qs
+  scatter = getScatterMatrix qs
   (eval, evec) = decomposeScatter scatter
   -- z4 by definition is equal zero
   (z1, z2, z3) = lookupConcentration (DFF eval)
@@ -279,18 +284,6 @@ fitBingham qs = let
      (z1, mkQuaternion $ _1 evec)
      (z2, mkQuaternion $ _2 evec)
      (z3, mkQuaternion $ _3 evec)
-
--- | Calculates the inertia matrix that describes the distribution.
-calcInertiaMatrix :: Vector Quaternion -> Mat4
-calcInertiaMatrix qs
-  | n > 0     = total &* (1/n)
-  | otherwise = zero
-  where
-    n     = fromIntegral (V.length qs)
-    total = V.foldl' func zero qs
-    func acc q = let
-      v = quaterVec q
-      in acc &+ (outer v v)
 
 -- | Find the concentration values using the gradient descent method.
 lookupConcentration :: DFF -> (Double, Double, Double)
@@ -344,7 +337,7 @@ sphere :: Int -> Int -> (Vector Vec3, Vector SphereCell)
 sphere nPhi nTheta
   | nPhi   < 3 = sphere 3 nTheta
   | nTheta < 3 = sphere nPhi 3
-  | otherwise  = (V.map toCart ql, mkMesh ll)
+  | otherwise  = (U.map toCart ql, mkMesh ll)
   where
     -- phi   -> azimuthal angle
     -- theta -> polar     angle
@@ -352,30 +345,31 @@ sphere nPhi nTheta
     step_theta = pi / (fromIntegral nTheta)
     funcPHI   = (step_phi *) . fromIntegral
     funcTHETA = (step_theta *) . fromIntegral
-    qlm = V.fromList [ (funcPHI np, funcTHETA nt) | nt <- [1..nTheta-1], np <- [0..nPhi-1] ]
+    qlm = U.fromList [ (funcPHI np, funcTHETA nt) | nt <- [1..nTheta-1], np <- [0..nPhi-1] ]
     q0  = (0, 0)
     qn  = (2 * pi, pi)
-    ql  = q0 `V.cons` qlm `V.snoc` qn
+    ql  = q0 `U.cons` qlm `U.snoc` qn
     toCart (phi, theta) = let
       x = sin theta * cos phi
       y = sin theta * sin phi
       z = cos theta
       in Vec3 x y z
 
-    ll0 = V.replicate nPhi 0
-    lln = V.replicate nPhi (nPhi * (nTheta-1) + 1)
-    llm = V.fromList [ V.enumFromN ((n-1) * nPhi + 1) nPhi | n <- [1..nTheta-1] ]
+    ll0 = U.replicate nPhi 0
+    lln = U.replicate nPhi (nPhi * (nTheta-1) + 1)
+    llm = V.fromList [ U.enumFromN ((n-1) * nPhi + 1) nPhi | n <- [1..nTheta-1] ]
     ll  = ll0 `V.cons` llm `V.snoc` lln
 
-    mkMesh :: Vector (Vector Int) -> Vector SphereCell
-    mkMesh vl = V.ifoldl' (\acc i l -> acc V.++ mkStrip l (vl V.! (i+1))) V.empty (V.init vl)
+    mkMesh :: V.Vector (Vector Int) -> Vector SphereCell
+    mkMesh vl = V.ifoldl' (\acc i l -> acc U.++ mkStrip l (vl V.! (i+1))) U.empty (V.init vl)
     mkStrip l1 l2 = let
-      func i a b = SphereCell (b, l2 V.! (i+1), l1 V.! (i+1), a)
-      merge      = SphereCell (V.head l2, V.head l1, V.last l1, V.last l2)
-      in merge `V.cons` V.izipWith func (V.init l1) (V.init l2)
+      func i a b = SphereCell (b, l2 U.! (i+1), l1 U.! (i+1), a)
+      merge      = SphereCell (U.head l2, U.head l1, U.last l1, U.last l2)
+      in merge `U.cons` U.izipWith func (U.init l1) (U.init l2)
 
 -- local instance to avoid conflict when exported.
 newtype SphereCell = SphereCell (Int, Int, Int, Int)
+                   deriving (Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
 
 instance RenderCell SphereCell where
   makeCell (SphereCell (a, b, c, d)) = U.fromList [a, b, c, d]
@@ -398,9 +392,9 @@ renderBinghamOmega :: Bingham -> Int -> Double -> VTK Vec3
 renderBinghamOmega dist n omega = let
   mesh@(ps, _) = sphere n n
   vtk          = renderSphereVTK mesh
-  attr         = mkPointAttr "intensity" (\a _ -> intensity V.! a)
+  attr         = mkPointAttr "intensity" (\a _ -> intensity U.! a)
   axis2q x     = toQuaternion $ mkAxisPair x (Rad omega)
-  intensity    = V.map (binghamPDF dist . axis2q) ps
+  intensity    = U.map (binghamPDF dist . axis2q) ps
   in addDataPoints vtk attr
 
 -- | Render one sphere with n divisions of a the Bingham distribution.
@@ -409,10 +403,10 @@ renderBingham dist n = let
   step   = pi / fromIntegral n
   vtk    = renderSphereVTK mesh
   omegas = V.generate n ((step *) . fromIntegral)
-  attr o = mkPointAttr ("intensity-" ++ show o) (\a _ -> (intensity o) V.! a)
+  attr o = mkPointAttr ("intensity-" ++ show o) (\a _ -> (intensity o) U.! a)
   mesh@(ps, _) = sphere n n
   axis2q o x   = toQuaternion $ mkAxisPair x (Rad o)
-  intensity o  = V.map (binghamPDF dist . axis2q o) ps
+  intensity o  = U.map (binghamPDF dist . axis2q o) ps
   in V.foldr (\o acc -> addDataPoints acc (attr o)) vtk omegas
      -- foldl crashs
      -- in V.foldr (\o acc -> addDataPoints acc (attr o)) vtk omegas
@@ -456,7 +450,7 @@ testSample n = let
      a <- sampleBingham dist n
      putStrLn $ show dist
      putStrLn $ showPretty $ scatter dist
-     putStrLn $ showPretty $ calcInertiaMatrix $ V.fromList a
+     putStrLn $ showPretty $ getScatterMatrix $ U.fromList a
      writeQuater "Bing-PDF-testSample" $ renderBingham dist 20
      writeQuater "Bing-PDFProduct-testSample" $ renderBingham prod 20
      writeQuater "Bing-Samples-testSample" $ renderPoints a
@@ -472,13 +466,13 @@ testSampleFit z1 z2 z3 = let
   in do
     a <- sampleBingham dist 100000
     let
-      av    = V.fromList a
+      av    = U.fromList a
       dist2 = fitBingham av
     putStrLn ">>> Initial distribution:"
     putStrLn $ show dist
     putStrLn $ showPretty $ scatter dist
     putStrLn "\n>>> Sampled inertia matrix:"
-    putStrLn $ showPretty $ calcInertiaMatrix av
+    putStrLn $ showPretty $ getScatterMatrix av
     putStrLn "\n>>> Final distribution:"
     putStrLn $ show dist2
     putStrLn $ showPretty $ scatter dist2

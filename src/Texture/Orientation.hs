@@ -69,18 +69,23 @@ module Texture.Orientation
        , getRTNdir
        , get100dir
        , quaterInterpolation
+       , averageQuaternion
+       , getScatterMatrix
        , aproxToIdealAxis
        ) where
+
+import qualified Data.Vector.Unboxed         as U
+import qualified Data.Vector.Generic.Base    as GB
+import qualified Data.Vector.Generic.Mutable as GM
+import qualified Data.List                   as L
+
+import Data.Vector.Unboxed           (Vector)
 
 import Data.Ratio
 import Numeric
 
 import Hammer.Math.Algebra
 import System.Random
-
-import Data.Vector.Generic.Base
-import Data.Vector.Generic.Mutable
-import qualified Data.Vector.Unboxed as U
 
 -- import Debug.Trace
 -- dbg s x = trace (s ++ show x) x
@@ -106,7 +111,7 @@ data RefFrame = ND
 newtype Quaternion =
   Quaternion
   { quaterVec :: Vec4
-  } deriving (Eq, Vector U.Vector, MVector U.MVector, U.Unbox)
+  } deriving (Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
 
 instance Random Quaternion where
   random             = randomR (zerorot, zerorot)
@@ -147,20 +152,20 @@ data Euler =
 newtype AxisPair =
   AxisPair
   { axisAngle :: (Vec3, Double)
-  } deriving (Eq, Vector U.Vector, MVector U.MVector, U.Unbox)
+  } deriving (Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
 
 -- | Frank-Rodrigues representation.
 newtype Rodrigues =
   Rodrigues
   { rodriVec :: Vec3
-  } deriving (Eq, Vector U.Vector, MVector U.MVector, U.Unbox)
+  } deriving (Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
 
 -- | Frank-Rodrigues representation.
 newtype RotMatrix =
   RotMatrix
   { rotMat :: Mat3
   } deriving ( MultSemiGroup, Transposable, Inversable, IdMatrix
-             , Eq, Vector U.Vector, MVector U.MVector, U.Unbox   )
+             , Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
 
 instance Matrix RotMatrix
 
@@ -526,6 +531,34 @@ quaterInterpolation t (Quaternion pa) (Quaternion pb) = mkUnsafeQuaternion v
     s = sin omega
     y  = sin (omega * (1-t)) / s
     yb = sin (omega *    t ) / s
+
+-- | Calculates the scatter matrix that describes a given distribution.
+getScatterMatrix :: Vector Quaternion -> Mat4
+getScatterMatrix qs
+  | n > 0     = total &* (1/n)
+  | otherwise = zero
+  where
+    n     = fromIntegral (U.length qs)
+    total = U.foldl' func zero qs
+    func acc q = let
+      v = quaterVec q
+      in acc &+ (outer v v)
+
+-- | Calculates the average orientation from a distribution.
+-- See "Averaging Quaternions", FL Markley, 2007
+averageQuaternion :: Vector Quaternion -> Quaternion
+averageQuaternion vq = mkQuaternion $ case i of
+  0 -> _1 v
+  1 -> _2 v
+  2 -> _3 v
+  _ -> _4 v
+  where
+    scatter  = getScatterMatrix vq
+    (ev, ex) = symmEigen scatter
+    -- sort decomposition by eigenvalues
+    -- (highest eigenvalue = highest concentration value = distribution mode)
+    v = transpose ev
+    i = U.maxIndex $ U.fromList [_1 ex, _2 ex, _3 ex, _4 ex]
 
 -- | Calculates the approximated integer representation of poles (e.g. < 10 2 2 >).
 aproxToIdealAxis :: Vec3 -> Double -> (Int, Int, Int)
