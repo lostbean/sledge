@@ -81,6 +81,7 @@ import qualified Data.List                   as L
 
 import Data.Vector.Unboxed           (Vector)
 
+import Control.DeepSeq
 import Data.Ratio
 import Numeric
 
@@ -111,7 +112,7 @@ data RefFrame = ND
 newtype Quaternion =
   Quaternion
   { quaterVec :: Vec4
-  } deriving (Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
+  } deriving (Eq, NFData, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
 
 instance Random Quaternion where
   random             = randomR (zerorot, zerorot)
@@ -152,20 +153,20 @@ data Euler =
 newtype AxisPair =
   AxisPair
   { axisAngle :: (Vec3, Double)
-  } deriving (Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
+  } deriving (Eq, NFData, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
 
 -- | Frank-Rodrigues representation.
 newtype Rodrigues =
   Rodrigues
   { rodriVec :: Vec3
-  } deriving (Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
+  } deriving (Eq, NFData, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
 
 -- | Frank-Rodrigues representation.
 newtype RotMatrix =
   RotMatrix
   { rotMat :: Mat3
-  } deriving ( MultSemiGroup, Transposable, Inversable, IdMatrix
-             , Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
+  } deriving ( MultSemiGroup, Transposable, Inversable, IdMatrix, Eq
+             , NFData, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
 
 instance Matrix RotMatrix
 
