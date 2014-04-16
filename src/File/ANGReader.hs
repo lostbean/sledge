@@ -1,9 +1,11 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
-{-# LANGUAGE OverloadedStrings           #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | Read and load *.ang files from EBSD measure systems.
 module File.ANGReader
        ( parseANG
+       , ebsdToVoxBox
        , EBSDpoint (..)
        , EBSDinfo  (..)
        , EBSDphase (..)
@@ -12,15 +14,33 @@ module File.ANGReader
        ) where
 
 import qualified Data.Vector                      as V
+import qualified Data.Vector.Unboxed              as U
 import qualified Data.ByteString                  as B
 import qualified Data.ByteString.Char8            as BC
 import qualified Data.Attoparsec.ByteString.Char8 as AC
+
+import           Hammer.VoxBox
 
 import           Texture.Orientation (Quaternion, toQuaternion, mkEuler, Rad(..))
 import           Data.Vector         (Vector)
 import           Control.Applicative ((<|>), (<$>), pure)
 
 import           Data.Attoparsec.ByteString.Char8
+
+-- ============================== ANG manipulation =======================================
+
+ebsdToVoxBox :: (U.Unbox a)=> EBSDdata -> (EBSDpoint -> a) -> VoxBox a
+ebsdToVoxBox EBSDdata{..} func = let
+  EBSDinfo{..}       = ebsdInfo
+  Gridinfo{..}       = grid
+  (xstep, ystep)     = xystep
+  (row, col_even, _) = rowCols
+  boxorg = VoxelPos 0 0 0
+  boxdim = VoxBoxDim col_even row 1
+  dime   = VoxBoxRange boxorg boxdim
+  org    = VoxBoxOrigin xstart ystart zstart
+  spc    = VoxelDim xstep ystep ((xstep + ystep) / 2)
+  in VoxBox dime org spc (V.convert $ V.map func nodes)
 
 -- ============================== Data definition ========================================
 
