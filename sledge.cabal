@@ -21,6 +21,37 @@ Flag test
     Description:        Build the exectable using command line.
     Default:            False
 
+Flag tablegen
+    Description:        Build the exectable for Spherical Hamonics coefcient tables.
+    Default:            False
+
+Executable tablegen
+    main-is:           Main.hs
+    if flag(tablegen)
+       build-depends:  base                 == 4.*
+                     , vector               >= 0.10
+                     , containers           >= 0.4.2.1
+                     , unordered-containers >= 0.2
+                     , sledge
+                     , optparse-applicative >= 0.5
+                     , binary               >= 0.7
+
+       hs-source-dirs: tablegen
+
+       ghc-options:
+                       -Wall
+                       -O2
+                       -rtsopts
+                       -funbox-strict-fields
+                       -threaded
+                       -- -eventlog
+                       -auto-all
+                       -caf-all
+
+       Buildable:      True
+    else
+       Buildable:      False
+
 Executable sledge-profile
     main-is:           Main.hs
     if flag(test)
