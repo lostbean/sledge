@@ -110,16 +110,16 @@ Library
                     Texture.IPF
                     Texture.Bingham
                     Texture.SphericalHarmonics
-
-                    Texture.SH.Pyramid
-                    Texture.SH.SupportFunctions
-                    Texture.SH.Rotation
-                    Texture.SH.HyperSphere
+                    Texture.HyperSphere
 
                     File.ANGReader
                     File.ANGWriter
 
-  other-modules:    Texture.BinghamConstant
+  other-modules:    Texture.Bingham.Constant
+                    Texture.SH.Harmonics
+                    Texture.SH.SupportFunctions
+                    Texture.SH.Pyramid
+                    Texture.SH.Rotation
 
   exposed:        True
   buildable:      True

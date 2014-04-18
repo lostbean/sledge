@@ -7,7 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE TypeFamilies               #-}
 
-module Texture.SH.HyperSphere
+module Texture.HyperSphere
        ( -- * Unity Sphere (SO2)
          SO2 (..)
        , so2ToCart

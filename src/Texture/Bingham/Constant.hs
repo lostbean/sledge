@@ -10,7 +10,7 @@ F = 2 * 1F1 (1/2; (d + 1) / 2; z1 .. zn) using the truncate sum. The
 two variable case is one of the Humbert series.
 -}
 
-module Texture.BinghamConstant
+module Texture.Bingham.Constant
        ( computeF
        , computedFdz1
        , computedFdz2

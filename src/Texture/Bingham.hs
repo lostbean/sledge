@@ -42,7 +42,7 @@ import           Hammer.Math.Optimum
 import           Hammer.VTK
 
 import           Texture.Orientation
-import           Texture.BinghamConstant
+import           Texture.Bingham.Constant
 
 import           Debug.Trace
 dbg s x = trace (s L.++ show x) x

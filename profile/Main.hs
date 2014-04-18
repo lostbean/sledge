@@ -1,20 +1,15 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main where
 
-import           Data.Maybe                             (mapMaybe)
-import           Data.HashMap.Strict                    (HashMap)
-import           Numeric.Container                      (add, scale, buildMatrix)
-
-import           Data.List
 import           Options.Applicative
 import           Prelude
-import           System.Random
 
+import           Texture.SphericalHarmonics
 import           TestTexture
 
 data Tester =
   Tester
-  { run_test_HSH            :: Bool
+  { run_test_HSH :: Bool
   } deriving (Show)
 
 tester :: Parser Tester
@@ -36,5 +31,6 @@ run :: Tester -> IO ()
 run Tester{..} = do
   if run_test_HSH
     then do
-    runTextureChecker
+    testRotSymm
+    --runTextureChecker
     else putStrLn "Skiping HSH test."
