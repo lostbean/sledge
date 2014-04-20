@@ -119,6 +119,8 @@ Library
                     Texture.SH.Harmonics
                     Texture.SH.SupportFunctions
                     Texture.SH.Pyramid
+                    Texture.SH.RotationSO3
+                    Texture.SH.RotationSO4
                     Texture.SH.Rotation
 
   exposed:        True
