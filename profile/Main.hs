@@ -13,6 +13,8 @@ data Tester =
   , run_rot_HSH :: Bool
   , run_sym_SH  :: Bool
   , run_sym_HSH :: Bool
+  , run_fam_SH  :: Bool
+  , run_fam_HSH :: Bool
   } deriving (Show)
 
 tester :: Parser Tester
@@ -29,6 +31,12 @@ tester = Tester
   <*> switch
       (  long "symm-HSH"
       <> help "Run test on HSH symmetry." )
+  <*> switch
+      (  long "base-SH"
+      <> help "Plot SH base functions." )
+  <*> switch
+      (  long "base-HSH"
+      <> help "Plot HSH base functions." )
 
 main :: IO ()
 main = execParser opts >>= run
@@ -44,6 +52,5 @@ run Tester{..} = do
   when run_rot_HSH testRotHSH
   --when run_sym_SH  testSymmSH  -- no implemented yet
   when run_sym_HSH testSymmHSH
-  when
-    (not $ run_rot_SH || run_rot_HSH || run_sym_HSH)
-    (putStrLn "None selected! Use: --help")
+  when run_fam_SH  (plotSHFuncFamily 10)
+  when run_fam_HSH (plotHSHFuncFamily 10)
