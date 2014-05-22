@@ -39,10 +39,11 @@ module Texture.IPF
        , RGBDoubleColor (..)
        ) where
 
-import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as U
+import qualified Data.Vector         as V
 
-import           Data.Word   (Word8)
-import           Data.Vector (Vector)
+import           Data.Word           (Word8)
+import           Data.Vector.Unboxed (Vector)
 
 import           System.Random
 
@@ -148,9 +149,9 @@ findAnglesBase v IPFBase{..} = let
 -- and in the following order: @(v <-> plane RG, v <-> plane GB, v <-> plane BR)@
 findMinAngleBase :: Vector SymmOp -> IPFBase -> Normal3 -> (Normal3, AngularDist)
 findMinAngleBase symOps base x = let
-  symmX  = V.map mkNormal $ getAllSymmVec symOps $ fromNormal x
-  ibase  = V.minIndex $ V.map (angDist . (flip findAnglesBase) base) symmX
-  finalX = symmX V.! ibase
+  symmX  = U.map mkNormal $ getAllSymmVec symOps $ fromNormal x
+  ibase  = U.minIndex $ U.map (angDist . (flip findAnglesBase) base) symmX
+  finalX = symmX U.! ibase
   alphas = findAnglesBase finalX base
   angDist (AngularDist (a1, a2, a3)) = a1*a1 + a2*a2 + a3*a3
   in (finalX , alphas)
