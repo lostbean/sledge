@@ -65,12 +65,12 @@ data SO3 =
   , so3Phi   :: Double
   } deriving (Show)
 
+-- ========================================= SO2 =========================================
+
 cartToSO2 :: Vec3 -> SO2
 cartToSO2 n = let
   s = len n
   in SO2 {so2Theta = acos (_3 n / s), so2Phi = atan2 (_2 n) (_1 n)}
-
--- ========================================= SO2 =========================================
 
 so2ToCart :: SO2 -> Vec3
 so2ToCart SO2{..} = let
@@ -122,7 +122,7 @@ getSO2Cells nTheta nPhi = let
   in V.ifoldl' foo U.empty (V.init ll)
 
 -- local instance to avoid conflict when exported.
-newtype SO2Cell = SO2Cell (Int, Int, Int, Int) deriving (G.Vector U.Vector, M.MVector U.MVector, U.Unbox)
+newtype SO2Cell = SO2Cell (Int, Int, Int, Int) deriving (Show)
 
 instance RenderCell SO2Cell where
   makeCell (SO2Cell (a, b, c, d)) = U.fromList [a, b, c, d]
@@ -187,7 +187,7 @@ getSO3Cells nOmega nTheta nPhi = let
   in U.concatMap (\i -> U.map (func i) so2cells) layers
 
 newtype SO3Cell = SO3Cell ((Int, Int, Int, Int), (Int, Int, Int, Int))
-                deriving (G.Vector U.Vector, M.MVector U.MVector, U.Unbox)
+                deriving (Show)
 
 instance RenderCell SO3Cell where
   makeCell (SO3Cell ((a, b, c, d), (e, f, g, h))) =
@@ -342,3 +342,96 @@ instance G.Vector U.Vector SO3 where
   elemseq _ (SO3 x y z) t               = G.elemseq (undefined :: Vector a) x $
                                           G.elemseq (undefined :: Vector a) y $
                                           G.elemseq (undefined :: Vector a) z t
+
+-- -------------------------------------------- Unbox SO2Cell ----------------------------------------------------
+
+newtype instance U.MVector s SO2Cell = MV_SO2Cell (U.MVector s (Int, Int, Int, Int))
+newtype instance U.Vector    SO2Cell = V_SO2Cell  (U.Vector    (Int, Int, Int, Int))
+
+instance U.Unbox SO2Cell
+
+instance M.MVector U.MVector SO2Cell where
+  {-# INLINE basicLength #-}
+  {-# INLINE basicUnsafeSlice #-}
+  {-# INLINE basicOverlaps #-}
+  {-# INLINE basicUnsafeNew #-}
+  {-# INLINE basicUnsafeReplicate #-}
+  {-# INLINE basicUnsafeRead #-}
+  {-# INLINE basicUnsafeWrite #-}
+  {-# INLINE basicClear #-}
+  {-# INLINE basicSet #-}
+  {-# INLINE basicUnsafeCopy #-}
+  {-# INLINE basicUnsafeGrow #-}
+  basicLength (MV_SO2Cell v)                      = M.basicLength v
+  basicUnsafeSlice i n (MV_SO2Cell v)             = MV_SO2Cell $ M.basicUnsafeSlice i n v
+  basicOverlaps (MV_SO2Cell v1) (MV_SO2Cell v2)   = M.basicOverlaps v1 v2
+  basicUnsafeNew n                                = MV_SO2Cell `liftM` M.basicUnsafeNew n
+  basicUnsafeReplicate n (SO2Cell x)              = MV_SO2Cell `liftM` M.basicUnsafeReplicate n x
+  basicUnsafeRead (MV_SO2Cell v) i                = M.basicUnsafeRead v i >>= (return . SO2Cell)
+  basicUnsafeWrite (MV_SO2Cell v) i (SO2Cell x)   = M.basicUnsafeWrite v i x
+  basicClear (MV_SO2Cell v)                       = M.basicClear v
+  basicSet (MV_SO2Cell v) (SO2Cell x)             = M.basicSet v x
+  basicUnsafeCopy (MV_SO2Cell v1) (MV_SO2Cell v2) = M.basicUnsafeCopy v1 v2
+  basicUnsafeGrow (MV_SO2Cell v) n                = MV_SO2Cell `liftM` M.basicUnsafeGrow v n
+
+instance G.Vector U.Vector SO2Cell where
+  {-# INLINE basicUnsafeFreeze #-}
+  {-# INLINE basicUnsafeThaw #-}
+  {-# INLINE basicLength #-}
+  {-# INLINE basicUnsafeSlice #-}
+  {-# INLINE basicUnsafeIndexM #-}
+  {-# INLINE elemseq #-}
+  basicUnsafeFreeze (MV_SO2Cell v)              = V_SO2Cell `liftM` G.basicUnsafeFreeze v
+  basicUnsafeThaw (V_SO2Cell v)                 = MV_SO2Cell `liftM` G.basicUnsafeThaw v
+  basicLength (V_SO2Cell v)                     = G.basicLength v
+  basicUnsafeSlice i n (V_SO2Cell v)            = V_SO2Cell $ G.basicUnsafeSlice i n v
+  basicUnsafeIndexM (V_SO2Cell v) i             = G.basicUnsafeIndexM v i >>= (return . SO2Cell)
+  basicUnsafeCopy (MV_SO2Cell mv) (V_SO2Cell v) = G.basicUnsafeCopy mv v
+  elemseq _ (SO2Cell x) t                       = G.elemseq (undefined :: Vector a) x t
+
+-- -------------------------------------------- Unbox SO3Cell ----------------------------------------------------
+
+newtype instance U.MVector s SO3Cell = MV_SO3Cell (U.MVector s ((Int, Int, Int, Int), (Int, Int, Int, Int)))
+newtype instance U.Vector    SO3Cell = V_SO3Cell  (U.Vector    ((Int, Int, Int, Int), (Int, Int, Int, Int)))
+
+instance U.Unbox SO3Cell
+
+instance M.MVector U.MVector SO3Cell where
+  {-# INLINE basicLength #-}
+  {-# INLINE basicUnsafeSlice #-}
+  {-# INLINE basicOverlaps #-}
+  {-# INLINE basicUnsafeNew #-}
+  {-# INLINE basicUnsafeReplicate #-}
+  {-# INLINE basicUnsafeRead #-}
+  {-# INLINE basicUnsafeWrite #-}
+  {-# INLINE basicClear #-}
+  {-# INLINE basicSet #-}
+  {-# INLINE basicUnsafeCopy #-}
+  {-# INLINE basicUnsafeGrow #-}
+  basicLength (MV_SO3Cell v)                        = M.basicLength v
+  basicUnsafeSlice i n (MV_SO3Cell v)               = MV_SO3Cell $ M.basicUnsafeSlice i n v
+  basicOverlaps (MV_SO3Cell v1) (MV_SO3Cell v2)     = M.basicOverlaps v1 v2
+  basicUnsafeNew n                                  = MV_SO3Cell `liftM` M.basicUnsafeNew n
+  basicUnsafeReplicate n (SO3Cell (x,y))            = MV_SO3Cell `liftM` M.basicUnsafeReplicate n (x, y)
+  basicUnsafeRead (MV_SO3Cell v) i                  = M.basicUnsafeRead v i >>= (\(x, y) -> return $ SO3Cell (x,y))
+  basicUnsafeWrite (MV_SO3Cell v) i (SO3Cell (x,y)) = M.basicUnsafeWrite v i (x, y)
+  basicClear (MV_SO3Cell v)                         = M.basicClear v
+  basicSet (MV_SO3Cell v) (SO3Cell (x,y))           = M.basicSet v (x, y)
+  basicUnsafeCopy (MV_SO3Cell v1) (MV_SO3Cell v2)   = M.basicUnsafeCopy v1 v2
+  basicUnsafeGrow (MV_SO3Cell v) n                  = MV_SO3Cell `liftM` M.basicUnsafeGrow v n
+
+instance G.Vector U.Vector SO3Cell where
+  {-# INLINE basicUnsafeFreeze #-}
+  {-# INLINE basicUnsafeThaw #-}
+  {-# INLINE basicLength #-}
+  {-# INLINE basicUnsafeSlice #-}
+  {-# INLINE basicUnsafeIndexM #-}
+  {-# INLINE elemseq #-}
+  basicUnsafeFreeze (MV_SO3Cell v)              = V_SO3Cell `liftM` G.basicUnsafeFreeze v
+  basicUnsafeThaw (V_SO3Cell v)                 = MV_SO3Cell `liftM` G.basicUnsafeThaw v
+  basicLength (V_SO3Cell v)                     = G.basicLength v
+  basicUnsafeSlice i n (V_SO3Cell v)            = V_SO3Cell $ G.basicUnsafeSlice i n v
+  basicUnsafeIndexM (V_SO3Cell v) i             = G.basicUnsafeIndexM v i >>= (\(x, y) -> return $ SO3Cell (x,y))
+  basicUnsafeCopy (MV_SO3Cell mv) (V_SO3Cell v) = G.basicUnsafeCopy mv v
+  elemseq _ (SO3Cell (x,y)) t                   = G.elemseq (undefined :: Vector a) x $
+                                                  G.elemseq (undefined :: Vector a) y t
