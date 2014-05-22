@@ -42,6 +42,7 @@ import           Hammer.Math.Optimum
 import           Hammer.VTK
 
 import           Texture.Orientation
+import           Texture.HyperSphere
 import           Texture.Bingham.Constant
 
 import           Debug.Trace
@@ -333,83 +334,21 @@ bingProduct bing1 bing2 = let
 
 -- ====================================== Plot Space =====================================
 
-sphere :: Int -> Int -> (Vector Vec3, Vector SphereCell)
-sphere nPhi nTheta
-  | nPhi   < 3 = sphere 3 nTheta
-  | nTheta < 3 = sphere nPhi 3
-  | otherwise  = (U.map toCart ql, mkMesh ll)
-  where
-    -- phi   -> azimuthal angle
-    -- theta -> polar     angle
-    step_phi   = 2 * pi / (fromIntegral nPhi)
-    step_theta = pi / (fromIntegral nTheta)
-    funcPHI   = (step_phi *) . fromIntegral
-    funcTHETA = (step_theta *) . fromIntegral
-    qlm = U.fromList [ (funcPHI np, funcTHETA nt) | nt <- [1..nTheta-1], np <- [0..nPhi-1] ]
-    q0  = (0, 0)
-    qn  = (2 * pi, pi)
-    ql  = q0 `U.cons` qlm `U.snoc` qn
-    toCart (phi, theta) = let
-      x = sin theta * cos phi
-      y = sin theta * sin phi
-      z = cos theta
-      in Vec3 x y z
-
-    ll0 = U.replicate nPhi 0
-    lln = U.replicate nPhi (nPhi * (nTheta-1) + 1)
-    llm = V.fromList [ U.enumFromN ((n-1) * nPhi + 1) nPhi | n <- [1..nTheta-1] ]
-    ll  = ll0 `V.cons` llm `V.snoc` lln
-
-    mkMesh :: V.Vector (Vector Int) -> Vector SphereCell
-    mkMesh vl = V.ifoldl' (\acc i l -> acc U.++ mkStrip l (vl V.! (i+1))) U.empty (V.init vl)
-    mkStrip l1 l2 = let
-      func i a b = SphereCell (b, l2 U.! (i+1), l1 U.! (i+1), a)
-      merge      = SphereCell (U.head l2, U.head l1, U.last l1, U.last l2)
-      in merge `U.cons` U.izipWith func (U.init l1) (U.init l2)
-
--- local instance to avoid conflict when exported.
-newtype SphereCell = SphereCell (Int, Int, Int, Int)
-                   deriving (Eq, GB.Vector U.Vector, GM.MVector U.MVector, U.Unbox)
-
-instance RenderCell SphereCell where
-  makeCell (SphereCell (a, b, c, d)) = U.fromList [a, b, c, d]
-  getType _                          = VTK_QUAD
-
-renderSphereVTK :: (Vector Vec3, Vector SphereCell) -> VTK Vec3
-renderSphereVTK (ps, quads) = mkUGVTK "hypersphere" (V.convert ps) quads
-
 renderPoints :: [Quaternion] -> VTK Vec3
-renderPoints lq = let
-  (pos, omega) = V.unzip . V.map (axisAngle . fromQuaternion) $ V.fromList lq
-  pids = V.enumFromN (0 :: Int) (V.length pos)
-  vtk  = mkUGVTK "samples" (V.convert pos) pids
-  attr = mkPointAttr ("Omegas") (\a _ -> (omega) V.! a)
-  in addDataPoints vtk attr
+renderPoints = renderSO3PointsVTK . U.map (quaternionToSO3) . U.fromList
 
 -- | Render one sphere with n divisions of a the Bingham distribution at
 -- a fixed rotation angle (Omega ~ [0 .. 2*pi]).
-renderBinghamOmega :: Bingham -> Int -> Double -> VTK Vec3
-renderBinghamOmega dist n omega = let
-  mesh@(ps, _) = sphere n n
-  vtk          = renderSphereVTK mesh
-  attr         = mkPointAttr "intensity" (\a _ -> intensity U.! a)
-  axis2q x     = toQuaternion $ mkAxisPair x (Rad omega)
-  intensity    = U.map (binghamPDF dist . axis2q) ps
-  in addDataPoints vtk attr
+renderBinghamOmega :: Bingham -> Double -> VTK Vec3
+renderBinghamOmega dist omega = renderSO2VTK func
+  where
+    func = binghamPDF dist . so3ToQuaternion . so2ToSO3 omega
 
 -- | Render one sphere with n divisions of a the Bingham distribution.
-renderBingham :: Bingham -> Int -> VTK Vec3
-renderBingham dist n = let
-  step   = pi / fromIntegral n
-  vtk    = renderSphereVTK mesh
-  omegas = V.generate n ((step *) . fromIntegral)
-  attr o = mkPointAttr ("intensity-" ++ show o) (\a _ -> (intensity o) U.! a)
-  mesh@(ps, _) = sphere n n
-  axis2q o x   = toQuaternion $ mkAxisPair x (Rad o)
-  intensity o  = U.map (binghamPDF dist . axis2q o) ps
-  in V.foldr (\o acc -> addDataPoints acc (attr o)) vtk omegas
-     -- foldl crashs
-     -- in V.foldr (\o acc -> addDataPoints acc (attr o)) vtk omegas
+renderBingham :: Bingham -> VTK Vec3
+renderBingham dist = renderSO3SolidVTK func
+  where
+    func = binghamPDF dist . so3ToQuaternion
 
 -- | Render the PDF of a Bingham distribution in the Euler space.
 renderBinghamToEuler :: (Angle a, Num a)=> a -> (Int, Int, Int) -> Bingham -> VTK Double
@@ -451,8 +390,8 @@ testSample n = let
      putStrLn $ show dist
      putStrLn $ showPretty $ scatter dist
      putStrLn $ showPretty $ getScatterMatrix $ U.fromList a
-     writeQuater "Bing-PDF-testSample" $ renderBingham dist 20
-     writeQuater "Bing-PDFProduct-testSample" $ renderBingham prod 20
+     writeQuater "Bing-PDF-testSample" $ renderBingham dist
+     writeQuater "Bing-PDFProduct-testSample" $ renderBingham prod
      writeQuater "Bing-Samples-testSample" $ renderPoints a
      writeQuater "Euler-PDF-testSample" $ renderBinghamToEuler (Deg 5) (72, 36, 72) dist
 
@@ -476,8 +415,8 @@ testSampleFit z1 z2 z3 = let
     putStrLn "\n>>> Final distribution:"
     putStrLn $ show dist2
     putStrLn $ showPretty $ scatter dist2
-    writeQuater "Bing-PDF-Intial" $ renderBingham dist 20
-    writeQuater "Bing-PDF-Final" $ renderBingham dist2 20
+    writeQuater "Bing-PDF-Intial" $ renderBingham dist
+    writeQuater "Bing-PDF-Final" $ renderBingham dist2
     writeQuater "Bing-Samples-testSampleFit" $ renderPoints a
 
 -- | Use Monte Carlo integration to check to normalization of the distribution.
