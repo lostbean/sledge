@@ -17,14 +17,11 @@ module Texture.TesseractGrid
        , printTesseract
        ) where
 
-import qualified Data.List           as L
-import qualified Data.Vector         as V
-import qualified Data.Vector.Unboxed as U
+import qualified Data.Vector as V
 
 import           Data.Vector  (Vector)
 import           GHC.Generics (Generic)
 
-import           Data.Vector.Binary
 import           Data.Binary
 import           System.Random
 
@@ -32,8 +29,8 @@ import           Hammer.Math.Algebra
 import           Hammer.VTK
 import           Texture.Orientation
 
-import           Debug.Trace
-dbg s x = trace (s L.++ show x) x
+--import           Debug.Trace
+--dbg s x = trace (s ++ show x) x
 
 data TesseractPoint
   = Cell1 Vec3
@@ -172,13 +169,14 @@ testNormalization = let
     return $ tesseractMap (/k) $ tesseractZipWith (*) ns ts
 
 printTesseract :: (RenderElemVTK a)=> TesseractGrid a -> String -> IO ()
-printTesseract t name = let
+printTesseract t fname = let
   m     = gridSize t
   step  = 2 / (fromIntegral m)
-  vtk   = mkSPVTK "Tesseract" (m, m, m) (-1, -1, -1) (step, step, step)
-  attr1 = mkPointAttr "Cell-1" (\i _ -> (cell1 t) V.! i)
-  attr2 = mkPointAttr "Cell-2" (\i _ -> (cell2 t) V.! i)
-  attr3 = mkPointAttr "Cell-3" (\i _ -> (cell3 t) V.! i)
-  attr4 = mkPointAttr "Cell-4" (\i _ -> (cell4 t) V.! i)
-  vtk2  = L.foldl' (\acc attr -> addDataPoints acc attr) vtk [attr1, attr2, attr3, attr4]
-  in writeUniVTKfile ("/home/edgar/Desktop/" ++ name ++ ".vti") True vtk2
+  vtk :: VTK Double
+  vtk   = mkSPVTK "Tesseract" (m, m, m) (-1, -1, -1) (step, step, step) attrs
+  attr1 = mkPointAttr "Cell-1" ((cell1 t) V.!)
+  attr2 = mkPointAttr "Cell-2" ((cell2 t) V.!)
+  attr3 = mkPointAttr "Cell-3" ((cell3 t) V.!)
+  attr4 = mkPointAttr "Cell-4" ((cell4 t) V.!)
+  attrs = [attr1, attr2, attr3, attr4]
+  in writeUniVTKfile ("/home/edgar/Desktop/" ++ fname ++ ".vti") True vtk

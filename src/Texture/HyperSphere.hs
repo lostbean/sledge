@@ -201,7 +201,7 @@ mkSO2 nTheta nPhi = let
   cells = getSO2Cells   nTheta nPhi
   grid  = getSO2Grid nTheta nPhi
   ps    = U.map so2ToCart grid
-  vtk   = mkUGVTK "Sphere" (U.convert ps) cells
+  vtk   = mkUGVTK "Sphere" (U.convert ps) cells [] []
   in (grid, vtk)
 
 mkSO3 :: Int -> Int -> Int -> (Vector SO3, VTK Vec3)
@@ -209,44 +209,44 @@ mkSO3 nOmega nTheta nPhi = let
   cells = getSO3Cells   nOmega nTheta nPhi
   grid  = getSO3Grid nOmega nTheta nPhi
   ps    = U.map so3ToCart grid
-  vtk   = mkUGVTK "Hyper-sphere" (U.convert ps) cells
+  vtk   = mkUGVTK "Hyper-sphere" (U.convert ps) cells [] []
   in (grid, vtk)
 
 renderSO2VTK :: (SO2 -> Double) -> VTK Vec3
 renderSO2VTK feval = let
   (grid, vtk) = mkSO2 60 60
-  func i _    = feval (grid U.!i)
+  func        = feval . (grid U.!)
   attr        = mkPointAttr ("Intensity") func
-  in addDataPoints vtk attr
+  in addPointAttr vtk attr
 
 renderSO3SolidVTK :: (SO3 -> Double) -> VTK Vec3
 renderSO3SolidVTK feval = let
   (grid, vtk) = mkSO3 30 30 30
-  func i _    = feval (grid U.!i)
+  func        = feval . (grid U.!)
   attr        = mkPointAttr ("Intensity") func
-  in addDataPoints vtk attr
+  in addPointAttr vtk attr
 
 renderSO3ShellVTK :: (SO3 -> Double) -> VTK Vec3
 renderSO3ShellVTK feval = let
   (grid, vtk) = mkSO2 30 30
   ws          = [0, 2*pi/30 .. 2*pi]
-  func w i _  = feval $ so2ToSO3 w (grid U.!i)
+  func w      = feval . so2ToSO3 w . (grid U.!)
   foo acc w   = let
     attr = mkPointAttr ("Intensity - " ++ show w) (func w)
-    in addDataPoints acc attr
+    in addPointAttr acc attr
   in L.foldl' foo vtk ws
 
 renderSO2PointsVTK :: Vector SO2 -> VTK Vec3
 renderSO2PointsVTK lq = let
   pos  = U.map so2ToCart lq
   pids = U.enumFromN (0 :: Int) (U.length pos)
-  in mkUGVTK "SO2 points" (U.convert pos) pids
+  in mkUGVTK "SO2 points" (U.convert pos) pids [] []
 
 renderSO3PointsVTK :: Vector SO3 -> VTK Vec3
 renderSO3PointsVTK lq = let
   pos  = U.map so3ToCart lq
   pids = U.enumFromN (0 :: Int) (U.length pos)
-  in mkUGVTK "SO3 points" (U.convert pos) pids
+  in mkUGVTK "SO3 points" (U.convert pos) pids [] []
 
 -- -------------------------------------------- Unbox SO2 ----------------------------------------------------
 

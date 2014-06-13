@@ -30,8 +30,6 @@ module Texture.Bingham
 import qualified Data.List                   as L
 import qualified Data.Vector                 as V
 import qualified Data.Vector.Unboxed         as U
-import qualified Data.Vector.Generic.Base    as GB
-import qualified Data.Vector.Generic.Mutable as GM
 
 import           Control.Applicative ((<$>))
 import           Data.Vector.Unboxed (Vector)
@@ -361,9 +359,8 @@ renderBinghamToEuler step (np1, np, np2) dist = let
   inte = V.map (binghamPDF dist . toQuaternion) (V.fromList eu)
   orig = (fromAngle start, fromAngle start, fromAngle start)
   spc  = (fromAngle step,  fromAngle step,  fromAngle step)
-  vtk  = mkSPVTK "Euler_ODF" (np1, np, np2) orig spc
-  attr = mkPointAttr "PDF" (\i _ -> inte V.! i)
-  in addDataPoints vtk attr
+  attr = mkPointAttr "PDF" (inte V.!)
+  in mkSPVTK "Euler_ODF" (np1, np, np2) orig spc [attr]
 
 -- ====================================== Test ===========================================
 
