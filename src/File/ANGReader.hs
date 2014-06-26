@@ -29,18 +29,21 @@ import           Data.Attoparsec.ByteString.Char8
 
 -- ============================== ANG manipulation =======================================
 
-ebsdToVoxBox :: (U.Unbox a)=> EBSDdata -> (EBSDpoint -> a) -> VoxBox a
-ebsdToVoxBox EBSDdata{..} func = let
-  EBSDinfo{..}       = ebsdInfo
-  Gridinfo{..}       = grid
-  (xstep, ystep)     = xystep
-  (row, col_even, _) = rowCols
-  boxorg = VoxelPos 0 0 0
-  boxdim = VoxBoxDim col_even row 1
-  dime   = VoxBoxRange boxorg boxdim
-  org    = VoxBoxOrigin xstart ystart zstart
-  spc    = VoxelDim xstep ystep ((xstep + ystep) / 2)
-  in VoxBox dime org spc (V.convert $ V.map func nodes)
+ebsdToVoxBox :: (U.Unbox a)=> EBSDdata -> (EBSDpoint -> a) -> Either String (VoxBox a)
+ebsdToVoxBox EBSDdata{..} func
+  | not hexGrid = Right box
+  | otherwise   = Left "[ANG] Can't produce VoxBox from ANG file with hexagonal grid."
+  where
+    EBSDinfo{..}       = ebsdInfo
+    Gridinfo{..}       = grid
+    (xstep, ystep)     = xystep
+    (row, col_even, _) = rowCols
+    boxorg = VoxelPos 0 0 0
+    boxdim = VoxBoxDim col_even row 1
+    dime   = VoxBoxRange boxorg boxdim
+    org    = VoxBoxOrigin xstart ystart zstart
+    spc    = VoxelDim xstep ystep ((xstep + ystep) / 2)
+    box    =  VoxBox dime org spc (V.convert $ V.map func nodes)
 
 -- ============================== Data definition ========================================
 
@@ -102,9 +105,13 @@ data EBSDdata
 parseANG :: String -> IO EBSDdata
 parseANG fileName = do
   stream <- B.readFile fileName
-  case parseOnly parseEBSDdata stream of
-    Left err -> error (">> Error reading file " ++ fileName ++ "\n" ++ show err)
-    Right xs -> return xs
+  let
+    ebsd = case parseOnly parseEBSDdata stream of
+      Left err -> error ("[ANG] Error reading file " ++ fileName ++ "\n" ++ show err)
+      Right x  -> x
+  checkDataShape ebsd
+  checkDataSize  ebsd
+  return ebsd
 
 parseEBSDdata :: Parser EBSDdata
 parseEBSDdata = do
@@ -114,6 +121,30 @@ parseEBSDdata = do
   skipMany (skipComment)
   point_list  <- many1 (pointParse grid_info)
   return $ EBSDdata (V.fromList point_list) grid_info head_info phases_info
+
+checkDataShape :: EBSDdata -> IO ()
+checkDataShape EBSDdata{..}
+  | not hexGrid && cEven == cOdd = putStrLn "[ANG] Using square grid."
+  | not hexGrid = msg
+  | otherwise   = putStrLn "[ANG] Using hexagonal grid."
+  where
+    msg = error $ "[ANG] Improper square grid shape. (row, cEven, cOdd) = " ++ show rowCols
+    Gridinfo{..}     = grid
+    (_, cEven, cOdd) = rowCols
+
+checkDataSize :: EBSDdata -> IO ()
+checkDataSize EBSDdata{..}
+  | V.length nodes == n = putStrLn $ "[ANG] Loaded numbers of points: " ++ show n
+  | otherwise = msg
+  where
+    Gridinfo{..}       = grid
+    (row, cEven, cOdd) = rowCols
+    (halfrow, leftrow) = row `quotRem` 2
+    n = halfrow * cEven + (halfrow + leftrow) * cOdd
+    msg = error $ "[ANG] Invalid numbers of points. Expected " ++
+          show n ++ " but found " ++
+          show (V.length nodes) ++ ". The grid shape is given by (row, cEven, cOdd) = " ++
+          show rowCols
 
 -- ------------------------------------ SubParsers ---------------------------------------
 
