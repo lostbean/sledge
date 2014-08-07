@@ -215,25 +215,25 @@ mkSO3 nOmega nTheta nPhi = let
 renderSO2VTK :: (SO2 -> Double) -> VTK Vec3
 renderSO2VTK feval = let
   (grid, vtk) = mkSO2 60 60
-  func        = feval . (grid U.!)
-  attr        = mkPointAttr ("Intensity") func
-  in addPointAttr vtk attr
+  func i _    = feval $ grid U.! i
+  attr        = mkPointValueAttr ("Intensity") func
+  in addPointValueAttr vtk attr
 
 renderSO3SolidVTK :: (SO3 -> Double) -> VTK Vec3
 renderSO3SolidVTK feval = let
   (grid, vtk) = mkSO3 30 30 30
-  func        = feval . (grid U.!)
-  attr        = mkPointAttr ("Intensity") func
-  in addPointAttr vtk attr
+  func i _    = feval $ grid U.! i
+  attr        = mkPointValueAttr ("Intensity") func
+  in addPointValueAttr vtk attr
 
 renderSO3ShellVTK :: (SO3 -> Double) -> VTK Vec3
 renderSO3ShellVTK feval = let
   (grid, vtk) = mkSO2 30 30
   ws          = [0, 2*pi/30 .. 2*pi]
-  func w      = feval . so2ToSO3 w . (grid U.!)
+  func w i _  = feval $ so2ToSO3 w (grid U.! i)
   foo acc w   = let
-    attr = mkPointAttr ("Intensity - " ++ show w) (func w)
-    in addPointAttr acc attr
+    attr = mkPointValueAttr ("Intensity - " ++ show w) (func w)
+    in addPointValueAttr acc attr
   in L.foldl' foo vtk ws
 
 renderSO2PointsVTK :: Vector SO2 -> VTK Vec3
