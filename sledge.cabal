@@ -111,6 +111,7 @@ Library
                     Texture.Bingham
                     Texture.SphericalHarmonics
                     Texture.HyperSphere
+                    Texture.Sampler
 
                     File.ANGReader
                     File.ANGWriter
