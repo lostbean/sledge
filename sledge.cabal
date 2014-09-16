@@ -115,6 +115,7 @@ Library
 
                     File.ANGReader
                     File.ANGWriter
+                    File.ODFReader
 
   other-modules:    Texture.Bingham.Constant
                     Texture.SH.Harmonics
