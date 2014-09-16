@@ -12,6 +12,8 @@ module Texture.TesseractGrid
        , getTesseractPos
        , emptyTesseract
        , binningTesseract
+       , accuTesseract
+       , updateTesseract
        , tesseractZipWith
        , tesseractMap
        , maxTesseractPoint
@@ -143,20 +145,36 @@ genTesseractGrid m func = let
                    }
 
 binningTesseract :: (Num a)=> Vector Quaternion -> TesseractGrid a -> TesseractGrid a
-binningTesseract qs tess@TesseractGrid{..} = let
-  us = V.map (getTesseractPos gridSize . quaternionToTesseract) qs
-  c1 = V.filter ((== 1) . fst) us
-  c2 = V.filter ((== 2) . fst) us
-  c3 = V.filter ((== 3) . fst) us
-  c4 = V.filter ((== 4) . fst) us
-  func cell input = let
-    v1 = V.replicate (V.length input) 1
-    vp = V.map (tessPosToIx gridSize . snd) input
-    in V.accumulate_ (+) cell vp v1
-  in tess { cell1 = func cell1 c1
-          , cell2 = func cell2 c2
-          , cell3 = func cell3 c3
-          , cell4 = func cell4 c4
+binningTesseract qs = accuTesseract qs (V.replicate (V.length qs) 1)
+
+accuTesseract :: (Num a)=> Vector Quaternion -> Vector a -> TesseractGrid a -> TesseractGrid a
+accuTesseract qs vs tess@TesseractGrid{..} = let
+  us = V.map (getTesseractPos gridSize . quaternionToTesseract) $ V.take (V.length vs) qs
+  vp = V.map (tessPosToIx gridSize . snd) us
+  func cell i = let
+    is = V.findIndices ((== i) . fst) us
+    vi = V.map (vp V.!) is
+    vx = V.map (vs V.!) is
+    in V.accumulate_ (+) cell vi vx
+  in tess { cell1 = func cell1 1
+          , cell2 = func cell2 2
+          , cell3 = func cell3 3
+          , cell4 = func cell4 4
+          }
+
+updateTesseract :: (Num a)=> Vector Quaternion -> Vector a -> TesseractGrid a -> TesseractGrid a
+updateTesseract qs vs tess@TesseractGrid{..} = let
+  us = V.map (getTesseractPos gridSize . quaternionToTesseract) $ V.take (V.length vs) qs
+  vp = V.map (tessPosToIx gridSize . snd) us
+  func cell i = let
+    is = V.findIndices ((== i) . fst) us
+    vi = V.map (vp V.!) is
+    vx = V.map (vs V.!) is
+    in V.update_ cell vi vx
+  in tess { cell1 = func cell1 1
+          , cell2 = func cell2 2
+          , cell3 = func cell3 3
+          , cell4 = func cell4 4
           }
 
 emptyTesseract :: Int -> a -> TesseractGrid a
