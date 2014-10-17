@@ -15,6 +15,8 @@ import Texture.HyperSphere
 import Texture.SphericalHarmonics
 import Texture.Sampler
 --import TestTexture
+import TestKernel
+
 
 data Tester =
   Tester
@@ -25,6 +27,7 @@ data Tester =
   , run_fam_SH  :: Bool
   , run_fam_HSH :: Bool
   , run_fit_HSH :: Bool
+  , run_ker_est :: Bool
   } deriving (Show)
 
 tester :: Parser Tester
@@ -50,6 +53,9 @@ tester = Tester
   <*> switch
       (  long "fit-HSH"
       <> help "fit HSH on 1000 points" )
+  <*> switch
+      (  long "ker-est"
+      <> help "test kernel estimation" )
 
 main :: IO ()
 main = execParser opts >>= run
@@ -68,6 +74,7 @@ run Tester{..} = do
   when run_fam_SH  (plotSHFuncFamily 10)
   when run_fam_HSH (plotHSHFuncFamily 10)
   when run_fit_HSH (testSamplerAndFit 1000)
+  when run_ker_est (testKernel)
 
 testSamplerAndFit :: Int -> IO ()
 testSamplerAndFit n = let

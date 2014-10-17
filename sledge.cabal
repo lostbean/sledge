@@ -58,6 +58,7 @@ Executable sledge-profile
        build-depends: sledge
                      , optparse-applicative >= 0.5
                      , hammer               >= 0.4
+                     , queryforest          >= 0.1
                      , array                >= 0.4
                      , base                 == 4.*
                      , vector               >= 0.10
@@ -65,6 +66,7 @@ Executable sledge-profile
                      , hmatrix              >= 0.15
                      , unordered-containers >= 0.2
                      , QuickCheck           >= 2.5
+                     , time                 >= 1.4.2
 
        hs-source-dirs: profile
 
@@ -102,6 +104,7 @@ Library
                 , attoparsec              >= 0.8
                 , blaze-builder           >= 0.3
                 , hmatrix                 >= 0.15
+                , queryforest             >= 0.1
 
   exposed-modules:  Texture.Symmetry
                     Texture.Orientation
@@ -113,6 +116,7 @@ Library
                     Texture.HyperSphere
                     Texture.Sampler
                     Texture.IsoSphere
+                    Texture.Kernel
 
                     File.ANGReader
                     File.ANGWriter
