@@ -21,6 +21,7 @@ module Texture.Symmetry
        , toFZGeneric
        , toFZDirect
        , getInFZ
+       , getMinDistFZPlanes
           -- * Vector operations
        , getAllSymmVec
        , getUniqueSymmVecs
@@ -201,6 +202,17 @@ nubVec l = let
   in func (U.empty, l)
 
 -- =======================================================================================
+
+-- | Get the minimum angular distance touching the closest symmetric plane in the
+-- Rodrigues-Frank space.
+getMinDistFZPlanes :: Symm -> Double
+getMinDistFZPlanes symm
+  | U.null as = pi
+  | n <= 0    = pi
+  | otherwise = pi / (fromIntegral n)
+  where
+    as = getSymmAxes symm
+    SymmAxis (_, n) = U.maximumBy (compare `on` (\(SymmAxis (_, x)) -> x)) as
 
 -- | Get the set of Frank-Rodrigues symmetric planes that form the fundamental zone.
 getFZPlanes :: Symm -> U.Vector FZPlane

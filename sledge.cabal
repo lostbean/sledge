@@ -112,6 +112,7 @@ Library
                     Texture.SphericalHarmonics
                     Texture.HyperSphere
                     Texture.Sampler
+                    Texture.IsoSphere
 
                     File.ANGReader
                     File.ANGWriter
