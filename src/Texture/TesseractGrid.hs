@@ -7,6 +7,7 @@ module Texture.TesseractGrid
        , tesseractToQuaternion
        , quaternionToTesseract
        , volumeGridCell
+       , genQuaternionGrid
        , genTesseractGrid2
        , genTesseractGrid
        , getTesseractPos
@@ -122,6 +123,22 @@ getTesseractPoint m (cell, (ix, iy, iz))
     v = Vec3 (foo ix) (foo iy) (foo iz)
 
 -- ============================== Grid functions ========================================= 
+
+genQuaternionGrid :: Int -> U.Vector Quaternion
+genQuaternionGrid m = let
+  step = 2 / (fromIntegral m)
+  x0   = step/2 - 1
+  foo  = (x0 +) . (step *) . fromIntegral
+  lin  = [foo i | i <- [0 .. (m - 1)]]
+  -- Use X -> Y -> Z sequence (X is fast increment)
+  cell = U.fromList [ Vec3 x y z
+                    | z <- lin
+                    , y <- lin
+                    , x <- lin ]
+  in (U.map (tesseractToQuaternion . Cell1) cell) U.++
+     (U.map (tesseractToQuaternion . Cell2) cell) U.++
+     (U.map (tesseractToQuaternion . Cell3) cell) U.++
+     (U.map (tesseractToQuaternion . Cell4) cell)
 
 genTesseractGrid2 :: Int -> (Quaternion -> a) -> TesseractGrid a
 genTesseractGrid2 m func = genTesseractGrid m (func . tesseractToQuaternion)
