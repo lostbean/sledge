@@ -1,21 +1,14 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main where
 
-import qualified Data.Vector.Unboxed as U
-
 import Options.Applicative
 import Control.Monad
 
-import Hammer.VTK
-import Hammer.Math.Algebra
-
-import Texture.Bingham
-import Texture.Orientation
-import Texture.HyperSphere
 import Texture.SphericalHarmonics
-import Texture.Sampler
 --import TestTexture
 import TestKernel
+import TestSampler
+import TestKernelSampling
 
 
 data Tester =
@@ -28,6 +21,9 @@ data Tester =
   , run_fam_HSH :: Bool
   , run_fit_HSH :: Bool
   , run_ker_est :: Bool
+  , run_sap_fit :: Bool
+  , run_sap_mul :: Bool
+  , run_ker_sap :: Bool
   } deriving (Show)
 
 tester :: Parser Tester
@@ -56,6 +52,15 @@ tester = Tester
   <*> switch
       (  long "ker-est"
       <> help "test kernel estimation" )
+  <*> switch
+      (  long "samp-fit"
+      <> help "sample and fit" )
+  <*> switch
+      (  long "samp-mult"
+      <> help "sample multi-modal distribution" )
+  <*> switch
+      (  long "ker-samp"
+      <> help "sampling from a kernel distribution" )
 
 main :: IO ()
 main = execParser opts >>= run
@@ -73,26 +78,7 @@ run Tester{..} = do
   when run_sym_HSH testSymmHSH
   when run_fam_SH  (plotSHFuncFamily 10)
   when run_fam_HSH (plotHSHFuncFamily 10)
-  when run_fit_HSH (testSamplerAndFit 1000)
   when run_ker_est (testKernel)
-
-testSamplerAndFit :: Int -> IO ()
-testSamplerAndFit n = let
-  da1 = (1, mkQuaternion  (Vec4 0 0 1 0))
-  da2 = (1, mkQuaternion  (Vec4 0 1 0 0))
-  da3 = (20, mkQuaternion (Vec4 1 0 0 1))
-  da  = mkBingham da1 da2 da3
-  db1 = (1, mkQuaternion  (Vec4 1 0 0 (-1)))
-  db2 = (20, mkQuaternion (Vec4 0 1 0 0))
-  db3 = (1, mkQuaternion  (Vec4 1 0 0 1))
-  db  = mkBingham db1 db2 db3
-  in do
-    xs <- hitAndRunSlice (\q -> binghamPDF da q + binghamPDF db q) (zerorot) (2*pi) n
-    writeQuater "Bing-PDF-A-testSamplerMultiModal" $ renderBingham da
-    writeQuater "Bing-PDF-B-testSamplerMultiModal" $ renderBingham db
-    let ss = map quaternionToSO3 xs
-    writeQuater "Bing-Samples-testSamplerMultiModal" $ renderSO3PointsVTK $ U.fromList ss
-    writeQuater "HSH-Samples-testSamplerMultiModal" $ plotHSH 20 ss id
-
-writeQuater :: (RenderElemVTK a)=> String -> VTK a -> IO ()
-writeQuater name = writeUniVTKfile (name ++ ".vtu") True
+  when run_sap_fit (testSampFit 10000)
+  when run_sap_mul (testSampMulti 10000)
+  when run_ker_sap (testKernelSampling 1000)
