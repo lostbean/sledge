@@ -10,9 +10,7 @@ import Hammer.Math.Algebra
 import Hammer.VTK
 import System.Random
 
-import qualified Data.KDtree  as KD
-import qualified Data.VPtree  as VP
-import qualified Data.MVPtree as MVP
+import qualified Data.BlazeVPtree as VP
 
 import Texture.Orientation
 import Texture.Symmetry
@@ -24,9 +22,6 @@ import Data.Time.Clock
 
 
 instance VP.Metric Quaternion where
-  dist = getMisoAngle Cubic
-
-instance MVP.Metric Quaternion where
   dist = getMisoAngle Cubic
 
 -- | Generate random values of Rodrigues-Frank C4 symmetry (90 <100>, 90 <010> 90 <001>)
@@ -64,30 +59,17 @@ testKernel = do
   putStrLn "========== Checking =========="
   putStrLn $ "check nears: " ++ show (bflists == vplist)
 
-  {--
   putStrLn "========== Performance =========="
   let nsample =  10000
   ps <- fmap (U.fromList . take nsample) getFRFZ
 
-  ta0 <- getCurrentTime
-  putStr $ "Sampling with brutal force " ++ show nsample ++ " rotations. Total points: "
-  let func p = U.filter ((< d) . VP.dist p . snd) (U.imap (,) rs)
-  putStrLn $ show $ U.sum $ U.map (U.length . func) ps
-  ta1 <- getCurrentTime
-  putStrLn $ "Calculation time: " ++ show (diffUTCTime ta1 ta0)
+  printTime "brutal force" $ let
+    func p = U.filter ((< d) . VP.dist p . snd) (U.imap (,) rs)
+    in U.map (U.length . func) ps
 
-  tc0 <- getCurrentTime
-  putStr $ "Searching nearest point in VP tree "
-  putStrLn $ show $ U.sum $ U.map ((\(Just (i,_,_)) -> i) . VP.nearestNeighbor vp) ps
-  tc1 <- getCurrentTime
-  putStrLn $ "Calculation time: " ++ show (diffUTCTime tc1 tc0)
+  printTime "VP tree" $ U.map (length . VP.nearNeighbors vp d) ps
 
-  td0 <- getCurrentTime
-  putStr $ "Sampling with VP tree " ++ show nsample ++ " rotations. Total points: "
-  putStrLn $ show $ U.sum $ U.map (length . VP.nearNeighbors vp d) ps
-  td1 <- getCurrentTime
-  putStrLn $ "Calculation time: " ++ show (diffUTCTime td1 td0)
-  --}
+  printTime "VP tree" $ U.map ((\(Just (i,_,_)) -> i) . VP.nearestThanNeighbor vp (4/80)) ps
 
   -- View Gaussian kernel
   --qs <- fmap (U.fromList . take 10) getFRFZ
@@ -97,3 +79,11 @@ testKernel = do
     attr = mkPointValueAttr "Intensity" (\i _ -> vs U.! i)
     vtk  = renderQuaternions rs []
   writeUniVTKfile "/home/edgar/kernel.vtu" True (addPointValueAttr vtk attr)
+
+printTime :: (U.Unbox s, Show s, Num s)=> [Char] -> U.Vector s -> IO ()
+printTime name ps = do
+  ta0 <- getCurrentTime
+  putStr $ "Sampling with " ++ name ++ ". Total points: "
+  putStrLn $ show $ U.sum ps
+  ta1 <- getCurrentTime
+  putStrLn $ "Calculation time: " ++ show (diffUTCTime ta1 ta0)
