@@ -32,6 +32,7 @@ import           Data.Vector  (Vector)
 import           GHC.Generics (Generic)
 
 import           Data.Binary
+import           Data.Vector.Binary()
 import           System.Random
 
 import           Hammer.Math.Algebra
