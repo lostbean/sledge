@@ -1,5 +1,5 @@
 name:           sledge
-version:        0.3.2
+version:        0.4
 cabal-version:  >= 1.8
 build-type:     Simple
 license:        GPL-3
@@ -25,15 +25,12 @@ Executable sledge-profile
     main-is:           Main.hs
     if flag(test)
        build-depends: sledge
-                     , optparse-applicative >= 0.5
                      , hammer               >= 0.4
                      , queryforest          >= 0.1
-                     , array                >= 0.4
                      , base                 == 4.*
+                     , optparse-applicative >= 0.5
                      , vector               >= 0.10
                      , random               >= 1.0
-                     , unordered-containers >= 0.2
-                     , QuickCheck           >= 2.5
                      , time                 >= 1.4.2
 
        hs-source-dirs: profile
@@ -55,19 +52,13 @@ Executable sledge-profile
 Library
   build-depends:  base                    == 4.*
                 , hammer                  >= 0.4
-                , array                   >= 0.4
-                , containers              >= 0.4.2.1
-                , unordered-containers    >= 0.2
                 , vector                  >= 0.10
-                , vector-algorithms       >= 0.5
                 , bytestring              >= 0.10
                 , text                    >= 0.11
                 , binary                  >= 0.7
                 , vector-binary-instances >= 0.2
                 , primitive               >= 0.5
-                , gamma                   >= 0.9
                 , random                  >= 1.0
-                , parallel                >= 3.0
                 , deepseq                 >= 1.2
                 , attoparsec              >= 0.8
                 , blaze-builder           >= 0.3
