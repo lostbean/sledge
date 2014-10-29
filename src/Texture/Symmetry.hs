@@ -21,6 +21,8 @@ module Texture.Symmetry
        , toFZGeneric
        , toFZDirect
        , getInFZ
+       , isInFZ
+       , getMinDistFZPlanes
           -- * Vector operations
        , getAllSymmVec
        , getUniqueSymmVecs
@@ -44,6 +46,7 @@ import qualified Data.Vector.Generic.Mutable as M
 
 import           Control.Monad               (liftM)
 import           Data.Vector                 (Vector)
+import           Data.Function               (on)
 
 import           Control.DeepSeq
 
@@ -200,7 +203,28 @@ nubVec l = let
       notEqual x = abs (h &. x - lh) > 1e-10
   in func (U.empty, l)
 
+-- | Determine whether or not a given quaternion is in the fundamental zone.
+isInFZ :: Symm -> Quaternion -> Bool
+isInFZ symm = \q -> let
+  w = abs (fst $ splitQuaternion q)
+  -- test if at least one of the symmetric equivalents has
+  -- rotation angle smaller than the input orientation. Therefore the
+  -- number of calculations varies between 1 and the number of symmetric operators
+  in maybe True (const False) (U.find ((> w) . abs . composeQ0 q . symmOp) os)
+  where os = getSymmOps symm
+
 -- =======================================================================================
+
+-- | Get the minimum angular distance touching the closest symmetric plane in the
+-- Rodrigues-Frank space.
+getMinDistFZPlanes :: Symm -> Double
+getMinDistFZPlanes symm
+  | U.null as = pi
+  | n <= 0    = pi
+  | otherwise = pi / (fromIntegral n)
+  where
+    as = getSymmAxes symm
+    SymmAxis (_, n) = U.maximumBy (compare `on` (\(SymmAxis (_, x)) -> x)) as
 
 -- | Get the set of Frank-Rodrigues symmetric planes that form the fundamental zone.
 getFZPlanes :: Symm -> U.Vector FZPlane
@@ -213,22 +237,23 @@ mkFZPlane (SymmAxis (dir, n)) = FZPlane (normal, dist)
     normal = mkNormal dir
     dist   = abs $ tan (pi / (2 * (fromIntegral n)))
 
--- | Test if a given orientation is inside the fundamental zone of Frank-Rodrigues space.
+-- | Determine whether or not a given quaternion is in the fundamental zone by using
+-- Rodrigues-Frank space and its symmetry planes. It should be faster than using all
+-- the symmetric operators i.e. 'isInFZ'
 isInRodriFZ :: Symm -> Quaternion -> Bool
-isInRodriFZ symm = let
-  planes = getFZPlanes symm
-  -- memorizing planes (eta expression)
-  in \q -> U.and $ U.map (isInRodriFZPlane q) planes
-
--- | Test if a given orientation is between a fundamental zone symmetric plane.
-isInRodriFZPlane :: Quaternion -> FZPlane -> Bool
-isInRodriFZPlane q (FZPlane (n, dist))
-  | proj < -dist = False
-  | proj >  dist = False
-  | otherwise    = True
+isInRodriFZ symm = \q -> let
+  rq = rodriVec $ fromQuaternion q
+  -- test until find the orientation is not inside
+  in maybe True (const False) (U.find (not . isInsideRFplane rq) planes)
   where
-    rq = rodriVec $ fromQuaternion q
-    proj = (fromNormal n) &. rq
+    -- memorizing planes (eta expression)
+    planes = getFZPlanes symm
+    -- Test if a given orientation is inside a fundamental zone's plane.
+    isInsideRFplane rq (FZPlane (n, dist))
+      | proj < -dist = False
+      | proj >  dist = False
+      | otherwise    = True
+      where proj = (fromNormal n) &. rq
 
 -- =======================================================================================
 
