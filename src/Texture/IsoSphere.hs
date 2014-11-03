@@ -2,7 +2,7 @@
 {-# LANGUAGE BangPatterns    #-}
 
 module Texture.IsoSphere
-       ( IsoSphere (subLevel, vertices, faces)
+       ( IsoSphere (subLevel, vertices, faces, centers)
        , isoSphereZero
        , isoSphere
        , refineIsoSphere
@@ -10,6 +10,7 @@ module Texture.IsoSphere
        , angularDistance
        , nearestPoint
        , genIsoSphereSO3Grid
+       , getOptSubDivisionLevel
        , renderIsoSphereFaces
        , renderQuaternions
        ) where
@@ -181,7 +182,7 @@ genIsoSphereSO3Grid :: (Angle a)=> Symm -> a -> U.Vector Quaternion
 genIsoSphereSO3Grid symm a = vs
   where
     (n, w) = getOptSubDivisionLevel a
-    step   = fromAngle w
+    step   = fromAngle (w :: Rad)
     nstep  = floor (pi / step)
     iso    = isoSphere n
     minw   = getMinDistFZPlanes symm
@@ -192,7 +193,7 @@ genIsoSphereSO3Grid symm a = vs
       | otherwise = U.filter (isInRodriFZ symm) (toQ t (vertices iso))
 
 -- | Find the minimum subdivision level that provides the given angular step size.
-getOptSubDivisionLevel :: (Angle a)=> a -> (Int, a)
+getOptSubDivisionLevel :: (Angle a0, Angle a1)=> a0 -> (Int, a1)
 getOptSubDivisionLevel a = go 0
   where
     w = fromAngle a
