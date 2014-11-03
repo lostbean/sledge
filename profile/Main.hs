@@ -8,6 +8,7 @@ import Control.Monad
 import TestKernel
 import TestSampler
 import TestKernelSampling
+import TestODF
 
 
 data Tester =
@@ -16,6 +17,7 @@ data Tester =
   , run_sap_fit :: Bool
   , run_sap_mul :: Bool
   , run_ker_sap :: Bool
+  , run_odf_sap :: Bool
   } deriving (Show)
 
 tester :: Parser Tester
@@ -32,6 +34,9 @@ tester = Tester
   <*> switch
       (  long "ker-samp"
       <> help "sampling from a kernel distribution" )
+  <*> switch
+      (  long "odf-samp"
+      <> help "sampling from a ODF" )
 
 main :: IO ()
 main = execParser opts >>= run
@@ -46,4 +51,5 @@ run Tester{..} = do
   when run_ker_est (testKernel)
   when run_sap_fit (testSampFit 10000)
   when run_sap_mul (testSampMulti 10000)
-  when run_ker_sap (testKernelSampling 1000)
+  when run_ker_sap (testKernelSampling 10000)
+  when run_odf_sap (testODF 10000)

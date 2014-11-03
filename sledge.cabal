@@ -74,6 +74,7 @@ Library
                     Texture.Sampler
                     Texture.IsoSphere
                     Texture.Kernel
+                    Texture.ODF
 
                     File.ANGReader
                     File.ANGWriter

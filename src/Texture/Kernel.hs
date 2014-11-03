@@ -9,9 +9,9 @@ module Texture.Kernel
 
 import qualified Data.Vector.Generic.Mutable as GM
 import qualified Data.Vector.Generic as G
+import qualified Data.Vector.Unboxed as U
 
 import Control.Monad.ST
-import Control.Monad.Primitive
 
 import Data.BlazeVPtree
 
@@ -23,20 +23,19 @@ gaussianKernel a x = exp (k * x * x)
     k = -0.5 / (w * w)
     w = fromAngle a
 
-addOneKernel :: (Metric Quaternion, Angle a, G.Vector v Double)
-             => a -> VPtree Quaternion -> Quaternion -> v Double -> v Double
+addOneKernel :: (Metric p, U.Unbox p, Angle a, G.Vector v Double)
+             => a -> VPtree p -> p -> v Double -> v Double
 addOneKernel a tree p = G.modify (addKernelM a tree p)
 
-addManyKernels :: (Metric Quaternion, Angle a, G.Vector v Quaternion, G.Vector v Double)
-               => a -> VPtree Quaternion -> v Quaternion -> v Double -> v Double
+addManyKernels :: (Metric p, U.Unbox p, Angle a, G.Vector v p, G.Vector v Double)
+               => a -> VPtree p -> v p -> v Double -> v Double
 addManyKernels a tree ps = G.modify (\v -> G.mapM_ (\p -> addKernelM a tree p v) ps)
 
-addKernelM :: (Metric Quaternion, Angle a, GM.MVector v Double, PrimMonad m)
-           => a -> VPtree Quaternion -> Quaternion -> v (PrimState m) Double -> m ()
+addKernelM :: (Metric p, U.Unbox p, Angle a, GM.MVector v Double)
+           => a -> VPtree p -> p -> v s Double -> ST s ()
 addKernelM a tree p acc = mapM_ func fs
   where
     fs = nearNeighbors tree (3 * fromAngle a) p
-    fuu x = acos . composeQ0 x . invert
     func (i, q, d) = do
       old <- GM.read acc i
       GM.write acc i (old + gaussianKernel a d)
