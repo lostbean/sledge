@@ -13,6 +13,7 @@ module Texture.ODF
        , resetODF
        , addPoints
        , getODFeval
+       , getMaxOrientation
        , renderODFVTK
        ) where
 
@@ -72,6 +73,10 @@ getODFeval ODF{..} = maybe 0 (\((i,_,_)) -> odfIntensity U.! i) . func
   where
     step = 4 / (fromIntegral odfGridStep)
     func = VP.nearestThanNeighbor odfTree step
+
+getMaxOrientation :: ODF -> (Quaternion, Double)
+getMaxOrientation ODF{..} = (odfGrid U.! i, odfIntensity U.! i)
+  where i = U.maxIndex odfIntensity
 
 -- | Render ODF
 renderODFVTK :: ODF -> VTK Vec3
