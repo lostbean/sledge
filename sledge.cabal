@@ -80,6 +80,7 @@ Library
                     File.ANGReader
                     File.ANGWriter
                     File.CTFReader
+                    File.CTFWriter
                     File.ODFReader
 
   other-modules:    Texture.Bingham.Constant
