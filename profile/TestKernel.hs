@@ -20,10 +20,6 @@ import Texture.Kernel
 
 import Data.Time.Clock
 
-
-instance VP.Metric Quaternion where
-  dist = getMisoAngle Cubic
-
 -- | Generate random values of Rodrigues-Frank C4 symmetry (90 <100>, 90 <010> 90 <001>)
 -- with FZ planes at (+-45 <100>,+-45 <010>,+-45 <001>)
 getFRFZ :: IO [Quaternion]

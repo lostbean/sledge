@@ -13,9 +13,7 @@ import Texture.IsoSphere
 import Texture.TesseractGrid
 import Texture.Kernel
 import Texture.Sampler
-
-instance VP.Metric Quaternion where
-  dist = getMisoAngle Cubic
+import Texture.ODF
 
 -- | Test VP tree on Rodrigues-Frank space
 testKernelSampling :: Int -> IO ()
