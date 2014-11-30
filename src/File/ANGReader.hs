@@ -2,15 +2,15 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Read and load *.ang files from EBSD measure systems.
+-- | Read and load *.ang files from ANG measure systems.
 module File.ANGReader
        ( parseANG
-       , ebsdToVoxBox
-       , EBSDpoint (..)
-       , EBSDinfo  (..)
-       , EBSDphase (..)
-       , Gridinfo  (..)
-       , EBSDdata  (..)
+       , angToVoxBox
+       , ANGpoint (..)
+       , ANGinfo  (..)
+       , ANGphase (..)
+       , ANGgrid  (..)
+       , ANGdata  (..)
        ) where
 
 import qualified Data.Vector                      as V
@@ -23,53 +23,56 @@ import           Hammer.VoxBox
 
 import           Texture.Orientation (Quaternion, toQuaternion, mkEuler, Rad(..))
 import           Data.Vector         (Vector)
-import           Control.Applicative ((<|>), (<$>), pure)
+import           Control.Applicative ((<|>), (<$>), (*>), pure)
 
 import           Data.Attoparsec.ByteString.Char8
 
 -- ============================== ANG manipulation =======================================
 
-ebsdToVoxBox :: (U.Unbox a)=> EBSDdata -> (EBSDpoint -> a) -> Either String (VoxBox a)
-ebsdToVoxBox EBSDdata{..} func
+angToVoxBox :: (U.Unbox a)=> ANGdata -> (ANGpoint -> a) -> Either String (VoxBox a)
+angToVoxBox ANGdata{..} func
   | not hexGrid = Right box
   | otherwise   = Left "[ANG] Can't produce VoxBox from ANG file with hexagonal grid."
   where
-    EBSDinfo{..}       = ebsdInfo
-    Gridinfo{..}       = grid
-    (xstep, ystep)     = xystep
+    ANGinfo{..} = ebsdInfo
+    ANGgrid{..} = grid
+    (xstep, ystep) = xystep
     (row, col_even, _) = rowCols
+    (xstart, ystart, zstart) = origin
     boxorg = VoxelPos 0 0 0
     boxdim = VoxBoxDim col_even row 1
     dime   = VoxBoxRange boxorg boxdim
     org    = VoxBoxOrigin xstart ystart zstart
     spc    = VoxelDim xstep ystep ((xstep + ystep) / 2)
-    box    =  VoxBox dime org spc (V.convert $ V.map func nodes)
+    box    = VoxBox dime org spc (V.convert $ V.map func nodes)
 
 -- ============================== Data definition ========================================
 
 -- | Information associated to each point. For futher reference consult OIM manual.
-data EBSDpoint
-  = EBSDpoint
+data ANGpoint
+  = ANGpoint
   { rotation :: {-# UNPACK #-} !Quaternion
   , xpos     :: {-# UNPACK #-} !Int
   , ypos     :: {-# UNPACK #-} !Int
-  , qi       :: {-# UNPACK #-} !Double
+  , iq       :: {-# UNPACK #-} !Double
   , ci       :: {-# UNPACK #-} !Double
   , phaseNum :: {-# UNPACK #-} !Int
   , detecInt :: {-# UNPACK #-} !Int
+  , fit      :: {-# UNPACK #-} !Double
   } deriving Show
 
 -- | Information describing the measuriment.
-data EBSDinfo =
-  EBSDinfo
-  { xstart       :: Double
-  , ystart       :: Double
-  , zstart       :: Double
-  , workDist     :: Double
-  } deriving (Show)
+data ANGinfo =
+  ANGinfo
+  { workDist :: Double
+  , pixperum :: Double
+  , operator :: String
+  , sampleID :: String
+  , scanID   :: String
+  } deriving Show
 
-data EBSDphase =
-  EBSDphase
+data ANGphase =
+  ANGphase
   { phase        :: Int
   , materialName :: String
   , formula      :: String
@@ -83,61 +86,68 @@ data EBSDphase =
   } deriving Show
 
 -- | Information about the grid of point. Hexagonal or Square
-data Gridinfo
-  = Gridinfo
+data ANGgrid
+  = ANGgrid
   { rowCols :: (Int, Int, Int)
   , xystep  :: (Double, Double)
+  , origin  :: (Double, Double, Double)
   , hexGrid :: Bool
   } deriving Show
 
 -- | Hold the whole ANG data strcuture
-data EBSDdata
-  = EBSDdata
-  { nodes    :: Vector EBSDpoint
-  , grid     :: Gridinfo
-  , ebsdInfo :: EBSDinfo
-  , phases   :: [EBSDphase]
+data ANGdata
+  = ANGdata
+  { nodes    :: Vector ANGpoint
+  , grid     :: ANGgrid
+  , ebsdInfo :: ANGinfo
+  , phases   :: [ANGphase]
   } deriving Show
 
 -- ============================== Parse functions ========================================
 
 -- | Read the input ANG file. Rise an error mesage in case of bad format or acess.
-parseANG :: String -> IO EBSDdata
+parseANG :: String -> IO ANGdata
 parseANG fileName = do
   stream <- B.readFile fileName
   let
-    ebsd = case parseOnly parseEBSDdata stream of
+    ebsd = case parseOnly parseANGdata stream of
       Left err -> error ("[ANG] Error reading file " ++ fileName ++ "\n" ++ show err)
       Right x  -> x
   checkDataShape ebsd
   checkDataSize  ebsd
   return ebsd
 
-parseEBSDdata :: Parser EBSDdata
-parseEBSDdata = do
-  head_info   <- headParse
-  phases_info <- many1 (skipEmptyComment >> phaseParse)
-  grid_info   <-        skipEmptyComment >> gridParse
-  skipMany (skipComment)
+parseANGdata :: Parser ANGdata
+parseANGdata = do
+  p <- getInfo "# TEM_PIXperUM"    parseFloat
+  r <- origParse
+  w <- getInfo "# WorkingDistance" parseFloat
+  phases_info <- many1 (skipCommentLine >> phaseParse)
+  grid_info   <- skipCommentLine >> gridParse r
+  o <- skipCommentLine >> getInfo "# OPERATOR:" parseText
+  s <- skipCommentLine >> getInfo "# SAMPLEID:" parseText
+  c <- skipCommentLine >> getInfo "# SCANID:"   parseText
+  skipCommentLine
+  let head_info = ANGinfo w p o s c
   point_list  <- many1 (pointParse grid_info)
-  return $ EBSDdata (V.fromList point_list) grid_info head_info phases_info
+  return $ ANGdata (V.fromList point_list) grid_info head_info phases_info
 
-checkDataShape :: EBSDdata -> IO ()
-checkDataShape EBSDdata{..}
+checkDataShape :: ANGdata -> IO ()
+checkDataShape ANGdata{..}
   | not hexGrid && cEven == cOdd = putStrLn "[ANG] Using square grid."
   | not hexGrid = msg
   | otherwise   = putStrLn "[ANG] Using hexagonal grid."
   where
     msg = error $ "[ANG] Improper square grid shape. (row, cEven, cOdd) = " ++ show rowCols
-    Gridinfo{..}     = grid
+    ANGgrid{..}     = grid
     (_, cEven, cOdd) = rowCols
 
-checkDataSize :: EBSDdata -> IO ()
-checkDataSize EBSDdata{..}
+checkDataSize :: ANGdata -> IO ()
+checkDataSize ANGdata{..}
   | V.length nodes == n = putStrLn $ "[ANG] Loaded numbers of points: " ++ show n
   | otherwise = msg
   where
-    Gridinfo{..}       = grid
+    ANGgrid{..}       = grid
     (row, cEven, cOdd) = rowCols
     (halfrow, leftrow) = row `quotRem` 2
     n = halfrow * cEven + (halfrow + leftrow) * cOdd
@@ -148,16 +158,7 @@ checkDataSize EBSDdata{..}
 
 -- ------------------------------------ SubParsers ---------------------------------------
 
-headParse :: Parser EBSDinfo
-headParse = do
-  _ <- getInfo "# TEM_PIXperUM"    parseFloat
-  x <- getInfo "# x-star"          parseFloat
-  y <- getInfo "# y-star"          parseFloat
-  z <- getInfo "# z-star"          parseFloat
-  w <- getInfo "# WorkingDistance" parseFloat
-  return $ EBSDinfo x y z w
-
-phaseParse :: Parser EBSDphase
+phaseParse :: Parser ANGphase
 phaseParse = do
   phn <- getInfo "# Phase"        parseInt
   mat <- getInfo "# MaterialName" parseText
@@ -169,20 +170,27 @@ phaseParse = do
   hkl <- option [] $ many1 hklParse
   ela <- option [] $ many1 elasticParse
   cat <- categoryParse
-  return $ EBSDphase phn mat for inf sym lat fam hkl ela cat
+  return $ ANGphase phn mat for inf sym lat fam hkl ela cat
 
-gridParse :: Parser Gridinfo
-gridParse = do
+origParse :: Parser (Double, Double, Double)
+origParse = do
+  x <- getInfo "# x-star" parseFloat
+  y <- getInfo "# y-star" parseFloat
+  z <- getInfo "# z-star" parseFloat
+  return (x, y, z)
+
+gridParse :: (Double, Double, Double) -> Parser ANGgrid
+gridParse orig = do
   isHex <- getInfo "# GRID:"       gridType
   xstep <- getInfo "# XSTEP:"      parseFloat
   ystep <- getInfo "# YSTEP:"      parseFloat
   codd  <- getInfo "# NCOLS_ODD:"  parseInt
   ceven <- getInfo "# NCOLS_EVEN:" parseInt
   row   <- getInfo "# NROWS:"      parseInt
-  return $ Gridinfo (row, ceven, codd) (xstep, ystep) isHex
+  return $ ANGgrid (row, ceven, codd) (xstep, ystep) orig isHex
 
 elasticParse :: Parser (Double, Double, Double, Double, Double, Double)
-elasticParse = "# ElasticConstants" .*> do
+elasticParse = "# ElasticConstants" *> do
   i1 <- parseFloat
   i2 <- parseFloat
   i3 <- parseFloat
@@ -193,7 +201,7 @@ elasticParse = "# ElasticConstants" .*> do
   return (i1, i2, i3, i4, i5, i6)
 
 latticeParse :: Parser (Double, Double, Double, Double, Double, Double)
-latticeParse = "# LatticeConstants" .*> do
+latticeParse = "# LatticeConstants" *> do
   a  <- parseFloat
   b  <- parseFloat
   c  <- parseFloat
@@ -204,19 +212,18 @@ latticeParse = "# LatticeConstants" .*> do
   return (a, b, c, w1, w2, w3)
 
 hklParse :: Parser (Int, Int, Int, Int, Double, Int)
-hklParse = "# hklFamilies" .*> do
+hklParse = "# hklFamilies" *> do
   h <- parseInt
   k <- parseInt
   l <- parseInt
   a <- parseInt
-  -- TODO Fix
-  b <- (blanks >> manyTill anyChar space >> return 1)
-  c <- parseInt <|> return 0
+  b <- parseFloat
+  c <- parseInt
   eol
   return (h, k, l, a, b, c)
 
 categoryParse :: Parser (Int,Int,Int,Int,Int)
-categoryParse = "# Categories" .*> do
+categoryParse = "# Categories" *> do
   a <- parseInt
   b <- parseInt
   c <- parseInt
@@ -225,7 +232,7 @@ categoryParse = "# Categories" .*> do
   eol
   return (a,b,c,d,f)
 
-pointParse :: Gridinfo -> Parser EBSDpoint
+pointParse :: ANGgrid -> Parser ANGpoint
 pointParse g = do
   p1 <- parseFloat
   p  <- parseFloat
@@ -236,15 +243,15 @@ pointParse g = do
   c  <- parseFloat
   ph <- parseInt
   dc <- parseInt
-  _  <- parseFloat
+  f  <- parseFloat <|> return 0
   eol
   let rot     = toQuaternion $ mkEuler (Rad p1) (Rad p) (Rad p2)
       (xi,yi) = getGridPoint g (x, y)
-  return $ EBSDpoint rot xi yi q c ph dc
+  return $ ANGpoint rot xi yi q c ph dc f
 
 -- | Calculate colunm position (row,col) from ID sequence
 -- Origin at (1,1)
-getGridPoint :: Gridinfo -> (Double, Double) -> (Int, Int)
+getGridPoint :: ANGgrid -> (Double, Double) -> (Int, Int)
 getGridPoint g (x, y) = let
   (xstep, ystep) = xystep g
   yi = round ((2*y)/ystep) `div` 2
@@ -266,11 +273,8 @@ getInfo ident func = let
 
 -- -------------------------------------- Basic parsers ----------------------------------
 
-skipEmptyComment :: Parser ()
-skipEmptyComment = getInfo "#" (pure ())
-
-skipComment :: Parser ()
-skipComment = getInfo "#" (skipWhile (not . isEOL))
+skipCommentLine :: Parser ()
+skipCommentLine = getInfo "#" (skipWhile (not . isEOL))
 
 gridType :: Parser Bool
 gridType = blanks >> (getInfo "HexGrid" (pure True)) <|> (getInfo "SqrGrid" (pure False))

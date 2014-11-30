@@ -2,15 +2,15 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Read and load *.ctf files from EBSD measure systems.
+-- | Read and load *.ctf files from CTF measure systems.
 module File.CTFReader
        ( parseCTF
-       , ebsdToVoxBox
-       , EBSDpoint (..)
-       , EBSDinfo  (..)
-       , EBSDphase (..)
-       , Gridinfo  (..)
-       , EBSDdata  (..)
+       , ctfToVoxBox
+       , CTFpoint (..)
+       , CTFinfo  (..)
+       , CTFphase (..)
+       , CTFgrid  (..)
+       , CTFdata  (..)
        ) where
 
 import qualified Data.Vector                      as V
@@ -29,13 +29,13 @@ import           Data.Attoparsec.ByteString.Char8
 
 -- ============================== CTF manipulation =======================================
 
-ebsdToVoxBox :: (U.Unbox a)=> EBSDdata -> (EBSDpoint -> a) -> VoxBox a
-ebsdToVoxBox EBSDdata{..} func = box
+ctfToVoxBox :: (U.Unbox a)=> CTFdata -> (CTFpoint -> a) -> VoxBox a
+ctfToVoxBox CTFdata{..} func = box
   where
-    EBSDinfo{..}   = ebsdInfo
-    Gridinfo{..}   = grid
+    CTFinfo{..}   = ebsdInfo
+    CTFgrid{..}   = grid
     (xstep, ystep) = xystep
-    (row, col)     = rowsCols
+    (row, col)     = rowCols
     boxorg = VoxelPos 0 0 0
     boxdim = VoxBoxDim col row 1
     dime   = VoxBoxRange boxorg boxdim
@@ -53,8 +53,8 @@ ebsdToVoxBox EBSDdata{..} func = box
 -- 
 -- OBS. For hexagonal grid a rotation of 30 deg (phi 2) may be necessary. The standard
 -- options are marked with (*).
-data EBSDpoint
-  = EBSDpoint
+data CTFpoint
+  = CTFpoint
   { phase        :: {-# UNPACK #-} !Int     -- ^ phase id (0 means non-indexed)
   , rotation     :: {-# UNPACK #-} !Quaternion
   , xpos         :: {-# UNPACK #-} !Int     -- ^ x position in um
@@ -67,16 +67,16 @@ data EBSDpoint
   } deriving Show
 
 -- | Information describing the measuriment.
-data EBSDinfo =
-  EBSDinfo
+data CTFinfo =
+  CTFinfo
   { project :: String
   , jobMode :: String
   , author  :: String
   , info    :: [String]
   } deriving (Show)
 
-data EBSDphase =
-  EBSDphase
+data CTFphase =
+  CTFphase
   { phaseID      :: Int
   , latticeCons  :: (Double, Double, Double, Double, Double, Double)
   , materialName :: String
@@ -84,37 +84,37 @@ data EBSDphase =
   } deriving Show
 
 -- | Information about the grid of point. Hexagonal or Square
-data Gridinfo
-  = Gridinfo
-  { rowsCols :: (Int, Int)
-  , xystep   :: (Double, Double)
-  , origin   :: (Double, Double, Double)
+data CTFgrid
+  = CTFgrid
+  { rowCols :: (Int, Int)
+  , xystep  :: (Double, Double)
+  , origin  :: (Double, Double, Double)
   } deriving Show
 
 -- | Hold the whole CTF data strcuture
-data EBSDdata
-  = EBSDdata
-  { nodes    :: Vector EBSDpoint
-  , grid     :: Gridinfo
-  , ebsdInfo :: EBSDinfo
-  , phases   :: [EBSDphase]
+data CTFdata
+  = CTFdata
+  { nodes    :: Vector CTFpoint
+  , grid     :: CTFgrid
+  , ebsdInfo :: CTFinfo
+  , phases   :: [CTFphase]
   } deriving Show
 
 -- ============================== Parse functions ========================================
 
 -- | Read the input CTF file. Rise an error mesage in case of bad format or acess.
-parseCTF :: String -> IO EBSDdata
+parseCTF :: String -> IO CTFdata
 parseCTF fileName = do
   stream <- B.readFile fileName
   let
-    ebsd = case parseOnly parseEBSDdata stream of
+    ebsd = case parseOnly parseCTFdata stream of
       Left err -> error ("[CTF] Error reading file " ++ fileName ++ "\n" ++ show err)
       Right x  -> x
   checkDataSize  ebsd
   return ebsd
 
-parseEBSDdata :: Parser EBSDdata
-parseEBSDdata = do
+parseCTFdata :: Parser CTFdata
+parseCTFdata = do
   string "Channel Text File" >> eol
   _proj   <- getInfo "Prj"      parseText
   _auth   <- getInfo "Author"   parseText
@@ -124,34 +124,34 @@ parseEBSDdata = do
   _phases <- many1' phaseParse
   skipWhile (not . isEOL) >> eol
   _points <- many1' (pointParse _grid)
-  let _head = EBSDinfo _proj _job _auth _info
-  return $ EBSDdata (V.fromList _points) _grid _head _phases
+  let _head = CTFinfo _proj _job _auth _info
+  return $ CTFdata (V.fromList _points) _grid _head _phases
 
-checkDataSize :: EBSDdata -> IO ()
-checkDataSize EBSDdata{..}
+checkDataSize :: CTFdata -> IO ()
+checkDataSize CTFdata{..}
   | V.length nodes == n = putStrLn $ "[CTF] Loaded numbers of points: " ++ show n
   | otherwise = msg
   where
-    Gridinfo{..} = grid
-    (row, col)   = rowsCols
+    CTFgrid{..} = grid
+    (row, col)  = rowCols
     n = row * col
     msg = error $ "[CTF] Invalid numbers of points. Expected " ++
           show n ++ " but found " ++
           show (V.length nodes) ++ ". The grid shape is given by (row, cEven, cOdd) = " ++
-          show rowsCols
+          show rowCols
 
 -- ------------------------------------ SubParsers ---------------------------------------
 
-phaseParse :: Parser EBSDphase
+phaseParse :: Parser CTFphase
 phaseParse = do
   phn <- getInfo "Phases" parseInt
   eol
   lat <- latticeParse
   mat <- parseField
   rs  <- parseFields
-  return $ EBSDphase phn lat mat rs
+  return $ CTFphase phn lat mat rs
 
-gridParse :: Parser Gridinfo
+gridParse :: Parser CTFgrid
 gridParse = do
   row   <- getInfo "XCells" parseInt
   col   <- getInfo "YCells" parseInt
@@ -160,7 +160,7 @@ gridParse = do
   x     <- getInfo "AcqE1"  parseFloat
   y     <- getInfo "AcqE2"  parseFloat
   z     <- getInfo "AcqE3"  parseFloat
-  return $ Gridinfo (row, col) (xstep, ystep) (x, y, z)
+  return $ CTFgrid (row, col) (xstep, ystep) (x, y, z)
 
 latticeParse :: Parser (Double, Double, Double, Double, Double, Double)
 latticeParse = do
@@ -178,7 +178,7 @@ latticeParse = do
   eol
   return (a, b, c, w1, w2, w3)
 
-pointParse :: Gridinfo -> Parser EBSDpoint
+pointParse :: CTFgrid -> Parser CTFpoint
 pointParse g = do
   ph   <- parseInt
   x    <- parseFloat
@@ -194,11 +194,11 @@ pointParse g = do
   eol
   let rot     = toQuaternion $ mkEuler (Deg phi1) (Deg phi) (Deg phi2)
       (xi,yi) = getGridPoint g (x, y)
-  return $ EBSDpoint ph rot xi yi bd er ma bc bs
+  return $ CTFpoint ph rot xi yi bd er ma bc bs
 
 -- | Calculate colunm position (row,col) from ID sequence
 -- Origin at (1,1)
-getGridPoint :: Gridinfo -> (Double, Double) -> (Int, Int)
+getGridPoint :: CTFgrid -> (Double, Double) -> (Int, Int)
 getGridPoint g (x, y) = let
   (xstep, ystep) = xystep g
   yi = round ((2*y)/ystep) `div` 2

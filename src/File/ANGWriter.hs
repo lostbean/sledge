@@ -5,7 +5,6 @@
 
 module File.ANGWriter
        ( renderANGFile
-       , renderEBSDdata
        ) where
 
 import qualified Data.Vector          as V
@@ -25,32 +24,41 @@ import           Data.Text.Lazy.Builder.Int
 import           File.ANGReader
 import           Texture.Orientation
 
-renderANGFile :: String -> EBSDdata -> IO ()
+renderANGFile :: String -> ANGdata -> IO ()
 renderANGFile fileName ang = let
-  txt = toLazyByteString $ renderEBSDdata ang
+  txt = toLazyByteString $ renderANGdata ang
   in BSL.writeFile fileName txt
 
-renderEBSDdata :: EBSDdata -> Builder
-renderEBSDdata EBSDdata{..} = let
-  comm = render ("\n#" :: Text)
-  in headRender ebsdInfo
-  <> comm
-  <> (mconcat $ map ((comm <>) . phaseRender) phases)
-  <> comm
+renderANGdata :: ANGdata -> Builder
+renderANGdata ANGdata{..} =
+  headRenderA grid ebsdInfo
+  <> (mconcat $ map ((comment <>) . phaseRender) phases)
+  <> comment
   <> gridRender grid
-  <> (mconcat $ replicate 6 comm)
+  <> comment
+  <> headRenderB ebsdInfo
   <> dataRender grid nodes
 
-headRender :: EBSDinfo -> Builder
-headRender EBSDinfo{..} =
-  render ("# TEM_PIXperUM" :: Text)
+headRenderA :: ANGgrid -> ANGinfo -> Builder
+headRenderA ANGgrid{..} ANGinfo{..} = let
+  (xstart, ystart, zstart) = origin
+  in (render ("# TEM_PIXperUM" :: Text) <> tab <> render pixperum)
   <> setInfo "# x-star"          xstart
   <> setInfo "# y-star"          ystart
   <> setInfo "# z-star"          zstart
   <> setInfo "# WorkingDistance" workDist
 
-phaseRender :: EBSDphase -> Builder
-phaseRender EBSDphase{..} =
+headRenderB :: ANGinfo -> Builder
+headRenderB ANGinfo{..} =
+     setInfo "# OPERATOR:" operator
+  <> comment
+  <> setInfo "# SAMPLEID:" sampleID
+  <> comment
+  <> setInfo "# SCANID:"   scanID
+  <> comment
+
+phaseRender :: ANGphase -> Builder
+phaseRender ANGphase{..} =
      setInfo "# Phase"          phase
   <> setInfo "# MaterialName"   materialName
   <> setInfo "# Formula"        formula
@@ -63,8 +71,9 @@ phaseRender EBSDphase{..} =
   <> categoryRender categories
 
 latticeRender :: (Double, Double, Double, Double, Double, Double) -> Builder
-latticeRender (a, b, c, alpha1, alpha2, alpha3) = let
-  txt = a <-> b <-> c <-> alpha1 <-> alpha2 <-> alpha3
+latticeRender (a, b, c, w1, w2, w3) = let
+  txt = renderF 3 a  <-> renderF 3 b  <-> renderF 3 c <->
+        renderF 3 w1 <-> renderF 3 w2 <-> renderF 3 w3
   in setInfo "# LatticeConstants" txt
 
 elasticRender :: (Double, Double, Double, Double, Double, Double) -> Builder
@@ -84,8 +93,8 @@ categoryRender (a,b,c,d,f) = let
   txt = a <-> b <-> c <-> d <-> f
   in setInfo "# Categories" txt
 
-gridRender :: Gridinfo -> Builder
-gridRender (Gridinfo (row, ceven, codd) (xstep, ystep) isHex) =
+gridRender :: ANGgrid -> Builder
+gridRender (ANGgrid (row, ceven, codd) (xstep, ystep) _ isHex) =
      setInfo "# GRID:"       (gridType isHex)
   <> setInfo "# XSTEP:"      xstep
   <> setInfo "# YSTEP:"      ystep
@@ -93,31 +102,32 @@ gridRender (Gridinfo (row, ceven, codd) (xstep, ystep) isHex) =
   <> setInfo "# NCOLS_EVEN:" ceven
   <> setInfo "# NROWS:"      row
 
-dataRender :: Gridinfo -> Vector EBSDpoint -> Builder
+dataRender :: ANGgrid -> Vector ANGpoint -> Builder
 dataRender g = V.foldl' (<>) (fromText "")  . V.map (pointRender g)
 
 orientationRender :: Quaternion -> Builder
 orientationRender q = let
   euler = fromQuaternion q
-  in     renderF 5 (phi1 euler)
-     <-> renderF 5 (phi  euler)
-     <-> renderF 5 (phi2 euler)
+  toPlus x = if x < 0 then x + 2*pi else x
+  in     renderF 5 (toPlus $ phi1 euler)
+     <-> renderF 5 (toPlus $ phi  euler)
+     <-> renderF 5 (toPlus $ phi2 euler)
 
-pointRender :: Gridinfo -> EBSDpoint -> Builder
-pointRender g EBSDpoint{..} = let
+pointRender :: ANGgrid -> ANGpoint -> Builder
+pointRender g ANGpoint{..} = let
   (x, y) = getGridPoint g (xpos, ypos)
   in render ("\n  " :: Text)
      <>  orientationRender rotation
      <-> renderF 5 x
      <-> renderF 5 y
-     <-> renderF 1 qi
+     <-> renderF 1 iq
      <-> renderF 3 ci
      <-> phaseNum
      <-> detecInt
 
 -- Calculate colunm position (row,col) from ID sequence
 -- Origin at (1,1)
-getGridPoint :: Gridinfo -> (Int, Int) -> (Double, Double)
+getGridPoint :: ANGgrid -> (Int, Int) -> (Double, Double)
 getGridPoint g (xi, yi) = let
   (xstep, ystep) = xystep g
   in (fromIntegral xi * xstep, fromIntegral yi * ystep)
@@ -141,19 +151,31 @@ instance Render Int where
   render = fromLazyText . toLazyText . decimal
 
 instance Render Double where
-  render = renderF 4
+  render = renderF 6
 
 renderF :: (RealFloat a)=> Int -> a -> Builder
 renderF n = fromLazyText . toLazyText . formatRealFloat Fixed (Just n)
 
 (<->) :: (Render a, Render b)=> a -> b -> Builder
-a <-> b = render a <> (fromChar ' ') <> render b
+a <-> b = render a <> spc <> render b
 
 setInfo :: (Render a)=> Text -> a -> Builder
 setInfo name value = let
   ntxt = render name
   txt  = render value
-  in fromChar '\n' <> ntxt <> fromChar '\t' <> txt
+  in eol <> ntxt <> tab <> txt
+
+tab :: Builder
+tab = fromChar '\t'
+
+eol :: Builder
+eol = fromChar '\n'
+
+spc :: Builder
+spc = fromChar ' '
+
+comment :: Builder
+comment = render ("\n#" :: Text)
 
 gridType :: Bool -> Text
 gridType g
