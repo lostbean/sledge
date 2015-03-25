@@ -6,13 +6,17 @@ module File.EBSD
        , writeANG
        , writeCTF
        , readEBSD
+       , readEBSDToVoxBox
        ) where
 
-import qualified Data.Vector as V
+import qualified Data.Vector         as V
+import qualified Data.Vector.Unboxed as U
 
 import Control.Exception
 import Control.Monad
 import GHC.IO.Handle
+
+import Hammer.VoxBox
 
 import File.ANGReader as A
 import File.ANGWriter
@@ -144,6 +148,11 @@ readEBSD f = let
         error (msg errANG errCTF)
         )
   )
+
+readEBSDToVoxBox :: (U.Unbox a)=> (CTFpoint -> a) -> (ANGpoint -> a) -> FilePath -> IO (VoxBox a)
+readEBSDToVoxBox fctf fang file = readEBSD file >>= return . either
+                                  (either error id . (flip A.angToVoxBox) fang)
+                                  ((flip C.ctfToVoxBox) fctf)
 
 writeANG :: (EBSD a)=> FilePath -> a -> IO ()
 writeANG f a = renderANGFile f (toANG a)
