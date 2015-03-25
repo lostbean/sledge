@@ -244,6 +244,7 @@ pointParse g = do
   ph <- parseInt
   dc <- parseInt
   f  <- parseFloat <|> return 0
+  skipWhile (not . isEOL)
   eol
   let rot     = toQuaternion $ mkEuler (Rad p1) (Rad p) (Rad p2)
       (xi,yi) = getGridPoint g (x, y)
