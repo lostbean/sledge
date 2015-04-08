@@ -13,27 +13,27 @@ module File.CTFReader
        , CTFdata  (..)
        ) where
 
-import qualified Data.Vector                      as V
-import qualified Data.Vector.Unboxed              as U
+import           Control.Applicative ((<|>), (<$>), pure)
+import           Data.Attoparsec.ByteString.Char8
+import           Data.Vector (Vector)
+import qualified Data.Attoparsec.ByteString.Char8 as AC
 import qualified Data.ByteString                  as B
 import qualified Data.ByteString.Char8            as BC
-import qualified Data.Attoparsec.ByteString.Char8 as AC
+import qualified Data.Vector                      as V
+import qualified Data.Vector.Unboxed              as U
 
 import           Hammer.VoxBox
 
 import           Texture.Orientation (Quaternion, toQuaternion, mkEuler, Deg(..))
-import           Data.Vector         (Vector)
-import           Control.Applicative ((<|>), (<$>))
-
-import           Data.Attoparsec.ByteString.Char8
+import           File.InternalParsers
 
 -- ============================== CTF manipulation =======================================
 
 ctfToVoxBox :: (U.Unbox a)=> CTFdata -> (CTFpoint -> a) -> VoxBox a
 ctfToVoxBox CTFdata{..} func = box
   where
-    CTFinfo{..}   = ebsdInfo
-    CTFgrid{..}   = grid
+    CTFinfo{..}    = ebsdInfo
+    CTFgrid{..}    = grid
     (xstep, ystep) = xystep
     (row, col)     = rowCols
     boxorg = VoxelPos 0 0 0
@@ -50,7 +50,7 @@ ctfToVoxBox CTFdata{..} func = box
 -- CI  <-> (number of bands / max. number of bands)* or (error / max. error)
 -- IQ  <-> band contrast* or band slope
 -- fit <-> mad (mean angular deviation)
--- 
+--
 -- OBS. For hexagonal grid a rotation of 30 deg (phi 2) may be necessary. The standard
 -- options are marked with (*).
 data CTFpoint
@@ -108,14 +108,14 @@ parseCTF fileName = do
   stream <- B.readFile fileName
   let
     ebsd = case parseOnly parseCTFdata stream of
-      Left err -> error ("[CTF] Error reading file " ++ fileName ++ "\n" ++ show err)
+      Left err -> error ("[CTF] Error reading file " ++ fileName ++ "\n\tReason: " ++ show err)
       Right x  -> x
   checkDataSize  ebsd
   return ebsd
 
 parseCTFdata :: Parser CTFdata
 parseCTFdata = do
-  string "Channel Text File" >> eol
+  getInfo "Channel Text File" (pure ())
   _proj   <- getInfo "Prj"      parseText
   _auth   <- getInfo "Author"   parseText
   _job    <- getInfo "JobMode"  parseText
@@ -143,58 +143,66 @@ checkDataSize CTFdata{..}
 -- ------------------------------------ SubParsers ---------------------------------------
 
 phaseParse :: Parser CTFphase
-phaseParse = do
-  phn <- getInfo "Phases" parseInt
-  eol
-  lat <- latticeParse
-  mat <- parseField
-  rs  <- parseFields
-  return $ CTFphase phn lat mat rs
+phaseParse = parser <?> "Failed to parse phase info"
+  where
+    parser = do
+      phn <- getInfo "Phases" parseInt
+      eol
+      lat <- latticeParse
+      mat <- parseField
+      rs  <- parseFields
+      return $ CTFphase phn lat mat rs
 
 gridParse :: Parser CTFgrid
-gridParse = do
-  row   <- getInfo "XCells" parseInt
-  col   <- getInfo "YCells" parseInt
-  xstep <- getInfo "XStep"  parseFloat
-  ystep <- getInfo "YStep"  parseFloat
-  x     <- getInfo "AcqE1"  parseFloat
-  y     <- getInfo "AcqE2"  parseFloat
-  z     <- getInfo "AcqE3"  parseFloat
-  return $ CTFgrid (row, col) (xstep, ystep) (x, y, z)
+gridParse = parser <?> "Failed to parse grid info"
+  where
+    parser = do
+      row   <- getInfo "XCells" parseInt
+      col   <- getInfo "YCells" parseInt
+      xstep <- getInfo "XStep"  parseFloat
+      ystep <- getInfo "YStep"  parseFloat
+      x     <- getInfo "AcqE1"  parseFloat
+      y     <- getInfo "AcqE2"  parseFloat
+      z     <- getInfo "AcqE3"  parseFloat
+      return $ CTFgrid (row, col) (xstep, ystep) (x, y, z)
 
 latticeParse :: Parser (Double, Double, Double, Double, Double, Double)
-latticeParse = do
-  a  <- parseFloat
-  string ";"
-  b  <- parseFloat
-  string ";"
-  c  <- parseFloat
-  blanks
-  w1 <- parseFloat
-  string ";"
-  w2 <- parseFloat
-  string ";"
-  w3 <- parseFloat
-  eol
-  return (a, b, c, w1, w2, w3)
+latticeParse = parser <?> "Failed to parse lattice parameters"
+  where
+    parser = do
+      a  <- parseFloat
+      string ";"
+      b  <- parseFloat
+      string ";"
+      c  <- parseFloat
+      blanks
+      w1 <- parseFloat
+      string ";"
+      w2 <- parseFloat
+      string ";"
+      w3 <- parseFloat
+      eol
+      return (a, b, c, w1, w2, w3)
 
 pointParse :: CTFgrid -> Parser CTFpoint
-pointParse g = do
-  ph   <- parseInt
-  x    <- parseFloat
-  y    <- parseFloat
-  bd   <- parseInt
-  er   <- parseInt
-  phi1 <- parseFloat
-  phi  <- parseFloat
-  phi2 <- parseFloat
-  ma   <- parseFloat
-  bc   <- parseInt
-  bs   <- parseInt
-  eol
-  let rot     = toQuaternion $ mkEuler (Deg phi1) (Deg phi) (Deg phi2)
-      (xi,yi) = getGridPoint g (x, y)
-  return $ CTFpoint ph rot xi yi bd er ma bc bs
+pointParse g = parser <?> "Failed to parse EBSD point"
+  where
+    parser = do
+      ph   <- parseInt
+      x    <- parseFloat
+      y    <- parseFloat
+      bd   <- parseInt
+      er   <- parseInt
+      phi1 <- parseFloat
+      phi  <- parseFloat
+      phi2 <- parseFloat
+      ma   <- parseFloat
+      bc   <- parseInt
+      bs   <- parseInt
+      eol
+      let rot     = toQuaternion $ mkEuler (Deg phi1) (Deg phi) (Deg phi2)
+          (xi,yi) = getGridPoint g (x, y)
+      return $ CTFpoint ph rot xi yi bd er ma bc bs
 
 -- | Calculate colunm position (row,col) from ID sequence
 -- Origin at (1,1)
@@ -207,17 +215,6 @@ getGridPoint g (x, y) = let
   xi = round ((2*x)/xstep) `div` 2
   in (xi, yi)
 
-getInfo :: B.ByteString -> Parser a -> Parser a
-getInfo ident func = let
-  parser = do
-    string ident
-    x <- func
-    eol
-    return x
-  in parser <|> do
-    found <- BC.unpack <$> AC.take (B.length ident)
-    fail ("Can't find the following field -> " ++ BC.unpack ident ++ ", found -> " ++ found )
-
 -- -------------------------------------- Basic parsers ----------------------------------
 
 parseFields :: Parser [String]
@@ -229,28 +226,5 @@ parseFields = do
 parseField :: Parser String
 parseField = blanks >> (BC.unpack <$> AC.takeWhile (\c -> not (isEOL c) && not (isEOField c)))
 
-parseText :: Parser String
-parseText = blanks >> ((unwords . words . BC.unpack) <$> AC.takeWhile (not . isEOL))
-
-parseFloat :: Parser Double
-parseFloat = blanks >> signed double
-
-parseInt :: Parser Int
-parseInt = blanks >> signed decimal
-
--- | Skips blank chars (space and tab)
-blanks :: Parser ()
-blanks = skipWhile isBlank
-
 isEOField :: Char -> Bool
 isEOField = (== '\t')
-
-isBlank :: Char -> Bool
-isBlank c = c == ' ' || c == '\t'
-
-isEOL :: Char -> Bool
-isEOL c = c == '\r' || c == '\n'
-
--- | Skips blanks chars till and including the eol (End Of Line - CR-LF or LF)
-eol :: Parser ()
-eol = blanks >> skipWhile isEOL

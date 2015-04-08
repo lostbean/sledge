@@ -140,7 +140,7 @@ ctfdata2angdata d = ANGdata
 
 readEBSD :: FilePath -> IO (Either ANGdata CTFdata)
 readEBSD f = let
-  msg e1 e2 = "This is not a valid ANG file:\n" ++ e1 ++ "\n nor a valid CTF file:\n" ++ e2
+  msg e1 e2 = "This file is neither a valid ANG file nor a valid CTF file.\n" ++ e1 ++ "\n" ++ e2
   in catch (liftM Left (parseANG f)) (\eANG -> do
      let errANG = show (eANG :: SomeException)
      catch (liftM Right (parseCTF f)) (\eCTF -> do

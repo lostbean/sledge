@@ -85,6 +85,7 @@ Library
                     File.ODFReader
 
   other-modules:    Texture.Bingham.Constant
+                    File.InternalParsers
 
   exposed:        True
   buildable:      True

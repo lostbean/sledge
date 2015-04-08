@@ -13,19 +13,17 @@ module File.ANGReader
        , ANGdata  (..)
        ) where
 
+import           Control.Applicative ((<|>), pure)
+import           Data.Attoparsec.ByteString.Char8
+import           Data.Vector (Vector)
+import qualified Data.ByteString                  as B
 import qualified Data.Vector                      as V
 import qualified Data.Vector.Unboxed              as U
-import qualified Data.ByteString                  as B
-import qualified Data.ByteString.Char8            as BC
-import qualified Data.Attoparsec.ByteString.Char8 as AC
 
 import           Hammer.VoxBox
 
+import           File.InternalParsers
 import           Texture.Orientation (Quaternion, toQuaternion, mkEuler, Rad(..))
-import           Data.Vector         (Vector)
-import           Control.Applicative ((<|>), (<$>), (*>), pure)
-
-import           Data.Attoparsec.ByteString.Char8
 
 -- ============================== ANG manipulation =======================================
 
@@ -111,7 +109,7 @@ parseANG fileName = do
   stream <- B.readFile fileName
   let
     ebsd = case parseOnly parseANGdata stream of
-      Left err -> error ("[ANG] Error reading file " ++ fileName ++ "\n" ++ show err)
+      Left err -> error ("[ANG] Error reading file " ++ fileName ++ "\n\tReason: " ++ show err)
       Right x  -> x
   checkDataShape ebsd
   checkDataSize  ebsd
@@ -122,14 +120,14 @@ parseANGdata = do
   p <- getInfo "# TEM_PIXperUM"    parseFloat
   r <- origParse
   w <- getInfo "# WorkingDistance" parseFloat
-  phases_info <- many1 (skipCommentLine >> phaseParse)
+  phases_info <- phasesParse
   grid_info   <- skipCommentLine >> gridParse r
   o <- skipCommentLine >> getInfo "# OPERATOR:" parseText
   s <- skipCommentLine >> getInfo "# SAMPLEID:" parseText
   c <- skipCommentLine >> getInfo "# SCANID:"   parseText
   skipCommentLine
   let head_info = ANGinfo w p o s c
-  point_list  <- many1 (pointParse grid_info)
+  point_list <- many1 (pointParse grid_info)
   return $ ANGdata (V.fromList point_list) grid_info head_info phases_info
 
 checkDataShape :: ANGdata -> IO ()
@@ -158,97 +156,120 @@ checkDataSize ANGdata{..}
 
 -- ------------------------------------ SubParsers ---------------------------------------
 
+phasesParse :: Parser [ANGphase]
+phasesParse = (many1 (skipCommentLine >> phaseParse)) <?> "Couldn't parser not a sinlge phase information"
+
 phaseParse :: Parser ANGphase
-phaseParse = do
-  phn <- getInfo "# Phase"        parseInt
-  mat <- getInfo "# MaterialName" parseText
-  for <- getInfo "# Formula"      parseText
-  inf <- getInfo "# Info"         parseText
-  sym <- getInfo "# Symmetry"     parseText
-  lat <- latticeParse
-  fam <- option 0  $ getInfo "# NumberFamilies" parseInt
-  hkl <- option [] $ many1 hklParse
-  ela <- option [] $ many1 elasticParse
-  cat <- categoryParse
-  return $ ANGphase phn mat for inf sym lat fam hkl ela cat
+phaseParse = parser <?> "Failed to parse phase info"
+  where
+    parser = do
+      phn <- getInfo "# Phase"        parseInt
+      mat <- getInfo "# MaterialName" parseText
+      for <- getInfo "# Formula"      parseText
+      inf <- getInfo "# Info"         parseText
+      sym <- getInfo "# Symmetry"     parseText
+      lat <- latticeParse
+      fam <- option 0  $ getInfo "# NumberFamilies" parseInt
+      hkl <- option [] $ many1 hklParse
+      ela <- option [] $ many1 elasticParse
+      cat <- categoryParse
+      return $ ANGphase phn mat for inf sym lat fam hkl ela cat
 
 origParse :: Parser (Double, Double, Double)
-origParse = do
-  x <- getInfo "# x-star" parseFloat
-  y <- getInfo "# y-star" parseFloat
-  z <- getInfo "# z-star" parseFloat
-  return (x, y, z)
+origParse = parser <?> "Failed to parser origin"
+  where
+    parser = do
+      x <- getInfo "# x-star" parseFloat
+      y <- getInfo "# y-star" parseFloat
+      z <- getInfo "# z-star" parseFloat
+      return (x, y, z)
 
 gridParse :: (Double, Double, Double) -> Parser ANGgrid
-gridParse orig = do
-  isHex <- getInfo "# GRID:"       gridType
-  xstep <- getInfo "# XSTEP:"      parseFloat
-  ystep <- getInfo "# YSTEP:"      parseFloat
-  codd  <- getInfo "# NCOLS_ODD:"  parseInt
-  ceven <- getInfo "# NCOLS_EVEN:" parseInt
-  row   <- getInfo "# NROWS:"      parseInt
-  return $ ANGgrid (row, ceven, codd) (xstep, ystep) orig isHex
+gridParse orig = parser <?> "Failed to parser grid info"
+  where
+    parser = do
+      isHex <- getInfo "# GRID:"       gridType
+      xstep <- getInfo "# XSTEP:"      parseFloat
+      ystep <- getInfo "# YSTEP:"      parseFloat
+      codd  <- getInfo "# NCOLS_ODD:"  parseInt
+      ceven <- getInfo "# NCOLS_EVEN:" parseInt
+      row   <- getInfo "# NROWS:"      parseInt
+      return $ ANGgrid (row, ceven, codd) (xstep, ystep) orig isHex
 
 elasticParse :: Parser (Double, Double, Double, Double, Double, Double)
-elasticParse = "# ElasticConstants" *> do
-  i1 <- parseFloat
-  i2 <- parseFloat
-  i3 <- parseFloat
-  i4 <- parseFloat
-  i5 <- parseFloat
-  i6 <- parseFloat
-  eol
-  return (i1, i2, i3, i4, i5, i6)
+elasticParse = parser <?> "Failed to parse elastic constants"
+  where
+    parser = do
+      string "# ElasticConstants"
+      i1 <- parseFloat
+      i2 <- parseFloat
+      i3 <- parseFloat
+      i4 <- parseFloat
+      i5 <- parseFloat
+      i6 <- parseFloat
+      eol
+      return (i1, i2, i3, i4, i5, i6)
 
 latticeParse :: Parser (Double, Double, Double, Double, Double, Double)
-latticeParse = "# LatticeConstants" *> do
-  a  <- parseFloat
-  b  <- parseFloat
-  c  <- parseFloat
-  w1 <- parseFloat
-  w2 <- parseFloat
-  w3 <- parseFloat
-  eol
-  return (a, b, c, w1, w2, w3)
+latticeParse = parser <?> "Failed to parse lattice parameters"
+  where
+    parser = do
+      string "# LatticeConstants"
+      a  <- parseFloat
+      b  <- parseFloat
+      c  <- parseFloat
+      w1 <- parseFloat
+      w2 <- parseFloat
+      w3 <- parseFloat
+      eol
+      return (a, b, c, w1, w2, w3)
 
 hklParse :: Parser (Int, Int, Int, Int, Double, Int)
-hklParse = "# hklFamilies" *> do
-  h <- parseInt
-  k <- parseInt
-  l <- parseInt
-  a <- parseInt
-  b <- parseFloat
-  c <- parseInt
-  eol
-  return (h, k, l, a, b, c)
+hklParse = parser <?> "Failed to parser HKL family"
+  where
+    parser = do
+      string "# hklFamilies"
+      h <- parseInt
+      k <- parseInt
+      l <- parseInt
+      a <- parseInt
+      b <- parseFloat
+      c <- parseInt
+      eol
+      return (h, k, l, a, b, c)
 
 categoryParse :: Parser (Int,Int,Int,Int,Int)
-categoryParse = "# Categories" *> do
-  a <- parseInt
-  b <- parseInt
-  c <- parseInt
-  d <- parseInt
-  f <- parseInt
-  eol
-  return (a,b,c,d,f)
+categoryParse = parser <?> "Failed to parser category"
+  where
+    parser = do
+      string "# Categories"
+      a <- parseInt
+      b <- parseInt
+      c <- parseInt
+      d <- parseInt
+      f <- parseInt
+      eol
+      return (a,b,c,d,f)
 
 pointParse :: ANGgrid -> Parser ANGpoint
-pointParse g = do
-  p1 <- parseFloat
-  p  <- parseFloat
-  p2 <- parseFloat
-  x  <- parseFloat
-  y  <- parseFloat
-  q  <- parseFloat
-  c  <- parseFloat
-  ph <- parseInt
-  dc <- parseInt
-  f  <- parseFloat <|> return 0
-  skipWhile (not . isEOL)
-  eol
-  let rot     = toQuaternion $ mkEuler (Rad p1) (Rad p) (Rad p2)
-      (xi,yi) = getGridPoint g (x, y)
-  return $ ANGpoint rot xi yi q c ph dc f
+pointParse g = parser <?> "Failed to parse EBSD point"
+  where
+    parser = do
+      p1 <- parseFloat
+      p  <- parseFloat
+      p2 <- parseFloat
+      x  <- parseFloat
+      y  <- parseFloat
+      q  <- parseFloat
+      c  <- parseFloat
+      ph <- parseInt
+      dc <- parseInt
+      f  <- parseFloat <|> return 0
+      skipWhile (not . isEOL)
+      eol
+      let rot     = toQuaternion $ mkEuler (Rad p1) (Rad p) (Rad p2)
+          (xi,yi) = getGridPoint g (x, y)
+      return $ ANGpoint rot xi yi q c ph dc f
 
 -- | Calculate colunm position (row,col) from ID sequence
 -- Origin at (1,1)
@@ -261,17 +282,6 @@ getGridPoint g (x, y) = let
   xi = round ((2*x)/xstep) `div` 2
   in (xi, yi)
 
-getInfo :: B.ByteString -> Parser a -> Parser a
-getInfo ident func = let
-  parser = do
-    string ident
-    x <- func
-    eol
-    return x
-  in parser <|> do
-    found <- BC.unpack <$> AC.take (B.length ident)
-    fail ("Can't find the following field -> " ++ BC.unpack ident ++ ", found -> " ++ found )
-
 -- -------------------------------------- Basic parsers ----------------------------------
 
 skipCommentLine :: Parser ()
@@ -279,23 +289,3 @@ skipCommentLine = getInfo "#" (skipWhile (not . isEOL))
 
 gridType :: Parser Bool
 gridType = blanks >> (getInfo "HexGrid" (pure True)) <|> (getInfo "SqrGrid" (pure False))
-
-parseText :: Parser String
-parseText = blanks >> ((unwords . words . BC.unpack) <$> AC.takeWhile (not . isEOL))
-
-parseFloat :: Parser Double
-parseFloat = blanks >> signed double
-
-parseInt :: Parser Int
-parseInt = blanks >> signed decimal
-
--- | Skips blank chars (space and tab)
-blanks :: Parser ()
-blanks = skipWhile (\c -> c == ' ' || c == '\t')
-
-isEOL :: Char -> Bool
-isEOL c = c == '\r' || c == '\n'
-
--- | Skips blanks chars till and including the eol (End Of Line - CR-LF or LF)
-eol :: Parser ()
-eol = blanks >> skipWhile isEOL
