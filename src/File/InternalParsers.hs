@@ -13,7 +13,7 @@ import           Data.Attoparsec.ByteString.Char8
 
 getInfo :: B.ByteString -> Parser a -> Parser a
 getInfo ident func = do
-  string ident
+  stringInfo ident
   x <- func
   eol
   return x

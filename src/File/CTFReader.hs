@@ -115,7 +115,7 @@ parseCTF fileName = do
 
 parseCTFdata :: Parser CTFdata
 parseCTFdata = do
-  getInfo "Channel Text File" (pure ())
+  stringInfo "Channel Text File"
   _proj   <- getInfo "Prj"      parseText
   _auth   <- getInfo "Author"   parseText
   _job    <- getInfo "JobMode"  parseText
