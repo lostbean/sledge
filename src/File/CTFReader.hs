@@ -171,15 +171,15 @@ latticeParse = parser <?> "Failed to parse lattice parameters"
   where
     parser = do
       a  <- parseFloat
-      string ";"
+      stringInfo ";"
       b  <- parseFloat
-      string ";"
+      stringInfo ";"
       c  <- parseFloat
       blanks
       w1 <- parseFloat
-      string ";"
+      stringInfo ";"
       w2 <- parseFloat
-      string ";"
+      stringInfo ";"
       w3 <- parseFloat
       eol
       return (a, b, c, w1, w2, w3)

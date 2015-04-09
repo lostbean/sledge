@@ -12,21 +12,22 @@ import           Control.Applicative ((<|>), (<$>))
 import           Data.Attoparsec.ByteString.Char8
 
 getInfo :: B.ByteString -> Parser a -> Parser a
-getInfo ident func = let
-  parser = do
-    string ident
-    x <- func
-    eol
-    return x
-  in parser <|> do
-    found <- BC.unpack <$> AC.take (B.length ident)
-    fail ("expecting -> " ++ BC.unpack ident ++ ", but found -> " ++ found )
+getInfo ident func = do
+  string ident
+  x <- func
+  eol
+  return x
+
+stringInfo :: BC.ByteString -> Parser BC.ByteString
+stringInfo s = AC.string s <|> do
+    found <- BC.unpack <$> AC.take (BC.length s)
+    fail ("expecting -> " ++ BC.unpack s ++ ", but found -> " ++ found)
 
 parseText :: Parser String
 parseText = blanks >> ((unwords . words . BC.unpack) <$> AC.takeWhile (not . isEOL))
 
 parseFloat :: Parser Double
-parseFloat = parseNumber (signed double <?> "Invalid integer number")
+parseFloat = parseNumber (signed double <?> "Invalid float number")
 
 parseInt :: Parser Int
 parseInt = parseNumber (signed decimal <?> "Invalid integer number")
@@ -42,6 +43,9 @@ parseNumber parser = do
 -- | Skips blank chars (space and tab)
 blanks :: Parser ()
 blanks = skipWhile isBlank
+
+skipRestOfTheLine :: Parser ()
+skipRestOfTheLine = skipWhile (not . isEOL) >> skipWhile isEOL
 
 isBlank :: Char -> Bool
 isBlank c = c == ' ' || c == '\t'
