@@ -149,10 +149,8 @@ readEBSD f = let
         )
   )
 
-readEBSDToVoxBox :: (U.Unbox a)=> (CTFpoint -> a) -> (ANGpoint -> a) -> FilePath -> IO (VoxBox a)
-readEBSDToVoxBox fctf fang file = readEBSD file >>= return . either
-                                  (either error id . (flip A.angToVoxBox) fang)
-                                  ((flip C.ctfToVoxBox) fctf)
+readEBSDToVoxBox :: (U.Unbox a)=> (CTFpoint -> a) -> (ANGpoint -> a) -> Either ANGdata CTFdata -> VoxBox a
+readEBSDToVoxBox fctf fang = either (either error id . (flip A.angToVoxBox) fang) ((flip C.ctfToVoxBox) fctf)
 
 writeANG :: (EBSD a)=> FilePath -> a -> IO ()
 writeANG f a = renderANGFile f (toANG a)
