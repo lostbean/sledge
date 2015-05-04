@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Texture.ODF
        ( ODF ( odfIntensity
@@ -12,6 +12,7 @@ module Texture.ODF
        , buildEmptyODF
        , resetODF
        , addPoints
+       , removePoints
        , getODFeval
        , getMaxOrientation
        , renderODFVTK
@@ -62,7 +63,12 @@ buildEmptyODF kw symm step
    qs = U.filter (isInRodriFZ symm) $ genQuaternionGrid s
 
 resetODF :: ODF -> ODF
-resetODF odf = odf { odfIntensity = U.replicate (odfGridSize odf) 0}
+resetODF odf = odf {odfIntensity = U.replicate (odfGridSize odf) 0}
+
+removePoints :: U.Vector Quaternion -> Maybe Rad -> ODF -> ODF
+removePoints qs customWidth odf@ODF{..} = odf { odfIntensity = is }
+  where is    = removeManyKernels width odfTree qs odfIntensity
+        width = maybe odfKernelWidth id customWidth
 
 addPoints :: U.Vector Quaternion -> ODF -> ODF
 addPoints qs odf@ODF{..} = odf { odfIntensity = is }
