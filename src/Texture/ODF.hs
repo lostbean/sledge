@@ -12,7 +12,8 @@ module Texture.ODF
        , buildEmptyODF
        , resetODF
        , addPoints
-       , removePoints
+       , addPointsWithConst
+       , integrateODFwith
        , getODFeval
        , getMaxOrientation
        , renderODFVTK
@@ -65,9 +66,9 @@ buildEmptyODF kw symm step
 resetODF :: ODF -> ODF
 resetODF odf = odf {odfIntensity = U.replicate (odfGridSize odf) 0}
 
-removePoints :: U.Vector Quaternion -> Maybe Rad -> ODF -> ODF
-removePoints qs customWidth odf@ODF{..} = odf { odfIntensity = is }
-  where is    = removeManyKernels width odfTree qs odfIntensity
+addPointsWithConst :: U.Vector Quaternion -> Double -> Maybe Rad -> ODF -> ODF
+addPointsWithConst qs k customWidth odf@ODF{..} = odf { odfIntensity = is }
+  where is    = addManyKernelsWithConst width k odfTree qs odfIntensity
         width = maybe odfKernelWidth id customWidth
 
 addPoints :: U.Vector Quaternion -> ODF -> ODF
@@ -83,6 +84,9 @@ getODFeval ODF{..} = maybe 0 (\((i,_,_)) -> odfIntensity U.! i) . func
 getMaxOrientation :: ODF -> (Quaternion, Double)
 getMaxOrientation ODF{..} = (odfGrid U.! i, odfIntensity U.! i)
   where i = U.maxIndex odfIntensity
+
+integrateODFwith :: (U.Unbox a, Num a)=> (Quaternion -> Double -> a) -> ODF -> a
+integrateODFwith func ODF{..} = U.foldl' (+) 0 $ U.zipWith func odfGrid odfIntensity
 
 -- | Render ODF
 renderODFVTK :: ODF -> VTK Vec3

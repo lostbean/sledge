@@ -83,7 +83,7 @@ import qualified Data.Vector.Generic.Mutable as M
 
 import           Control.Monad               (liftM)
 import           Data.Vector                 (Vector)
- 
+
 import           Control.DeepSeq
 import           Foreign
 import           Data.Ratio
