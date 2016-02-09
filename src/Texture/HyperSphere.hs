@@ -270,6 +270,7 @@ instance M.MVector U.MVector SO2 where
   basicLength (MV_SO2 v)                  = M.basicLength v
   basicUnsafeSlice i n (MV_SO2 v)         = MV_SO2 $ M.basicUnsafeSlice i n v
   basicOverlaps (MV_SO2 v1) (MV_SO2 v2)   = M.basicOverlaps v1 v2
+  basicInitialize (MV_SO2 v)              = M.basicInitialize v
   basicUnsafeNew n                        = MV_SO2 `liftM` M.basicUnsafeNew n
   basicUnsafeReplicate n (SO2 x y)        = MV_SO2 `liftM` M.basicUnsafeReplicate n (x, y)
   basicUnsafeRead (MV_SO2 v) i            = M.basicUnsafeRead v i >>= (\(x, y) -> return $ SO2 x y)
@@ -317,6 +318,7 @@ instance M.MVector U.MVector SO3 where
   basicLength (MV_SO3 v)                    = M.basicLength v
   basicUnsafeSlice i n (MV_SO3 v)           = MV_SO3 $ M.basicUnsafeSlice i n v
   basicOverlaps (MV_SO3 v1) (MV_SO3 v2)     = M.basicOverlaps v1 v2
+  basicInitialize (MV_SO3 v)                = M.basicInitialize v
   basicUnsafeNew n                          = MV_SO3 `liftM` M.basicUnsafeNew n
   basicUnsafeReplicate n (SO3 x y z)        = MV_SO3 `liftM` M.basicUnsafeReplicate n (x, y, z)
   basicUnsafeRead (MV_SO3 v) i              = M.basicUnsafeRead v i >>= (\(x,y,z) -> return $ SO3 x y z)
@@ -365,6 +367,7 @@ instance M.MVector U.MVector SO2Cell where
   basicLength (MV_SO2Cell v)                      = M.basicLength v
   basicUnsafeSlice i n (MV_SO2Cell v)             = MV_SO2Cell $ M.basicUnsafeSlice i n v
   basicOverlaps (MV_SO2Cell v1) (MV_SO2Cell v2)   = M.basicOverlaps v1 v2
+  basicInitialize (MV_SO2Cell v)                  = M.basicInitialize v
   basicUnsafeNew n                                = MV_SO2Cell `liftM` M.basicUnsafeNew n
   basicUnsafeReplicate n (SO2Cell x)              = MV_SO2Cell `liftM` M.basicUnsafeReplicate n x
   basicUnsafeRead (MV_SO2Cell v) i                = M.basicUnsafeRead v i >>= (return . SO2Cell)
@@ -411,6 +414,7 @@ instance M.MVector U.MVector SO3Cell where
   basicLength (MV_SO3Cell v)                        = M.basicLength v
   basicUnsafeSlice i n (MV_SO3Cell v)               = MV_SO3Cell $ M.basicUnsafeSlice i n v
   basicOverlaps (MV_SO3Cell v1) (MV_SO3Cell v2)     = M.basicOverlaps v1 v2
+  basicInitialize (MV_SO3Cell v)                    = M.basicInitialize v
   basicUnsafeNew n                                  = MV_SO3Cell `liftM` M.basicUnsafeNew n
   basicUnsafeReplicate n (SO3Cell (x,y))            = MV_SO3Cell `liftM` M.basicUnsafeReplicate n (x, y)
   basicUnsafeRead (MV_SO3Cell v) i                  = M.basicUnsafeRead v i >>= (\(x, y) -> return $ SO3Cell (x,y))

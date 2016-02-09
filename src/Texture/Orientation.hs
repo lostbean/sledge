@@ -1,8 +1,11 @@
-{-# LANGUAGE NamedFieldPuns             #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE
+    FlexibleContexts
+  , GeneralizedNewtypeDeriving
+  , MultiParamTypeClasses
+  , NamedFieldPuns
+  , RecordWildCards
+  , TypeFamilies
+  #-}
 
 -- |
 -- Module      : Texture.Orientation
@@ -629,6 +632,7 @@ instance M.MVector U.MVector Quaternion where
   basicLength (MV_Quaternion v)                         = M.basicLength v
   basicUnsafeSlice i n (MV_Quaternion v)                = MV_Quaternion $ M.basicUnsafeSlice i n v
   basicOverlaps (MV_Quaternion v1) (MV_Quaternion v2)   = M.basicOverlaps v1 v2
+  basicInitialize (MV_Quaternion v)                     = M.basicInitialize v
   basicUnsafeNew n                                      = MV_Quaternion `liftM` M.basicUnsafeNew n
   basicUnsafeReplicate n (Quaternion x)                 = MV_Quaternion `liftM` M.basicUnsafeReplicate n x
   basicUnsafeRead (MV_Quaternion v) i                   = M.basicUnsafeRead v i >>= (return . Quaternion)
