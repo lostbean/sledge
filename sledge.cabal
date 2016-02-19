@@ -17,37 +17,72 @@ description: Library with tools for metalurgical research. Includes:
 category:       Math
 author:         Edgar Gomes de Araujo
 
-Flag test
-    Description:        Build the exectable using command line.
-    Default:            False
+flag tests
+    description: Exectable tests for visual check.
+    default:     False
 
-Executable sledge-profile
-    main-is:           Main.hs
-    if flag(test)
-       build-depends: sledge
-                     , hammer               >= 0.4
-                     , queryforest          >= 0.1
-                     , base                 == 4.*
-                     , optparse-applicative >= 0.5
-                     , vector               >= 0.10
-                     , random               >= 1.0
-                     , time                 >= 1.4.2
-
-       hs-source-dirs: profile
-
-       ghc-options:
-                       -Wall
-                       -O2
-                       -rtsopts
-                       -funbox-strict-fields
-                       -threaded
-                       -- -eventlog
-                       -auto-all
-                       -caf-all
-
-       Buildable:      True
+executable test-kernel-sampling
+    main-is:        TestKernelSampling.hs
+    hs-source-dirs: test
+    build-depends: sledge
+                   , hammer
+                   , queryforest
+                   , base
+                   , vector
+                   , random
+    if flag(tests)
+       buildable: True
+       ghc-options: -Wall -O2 -rtsopts -threaded
     else
-       Buildable:      False
+       buildable: False
+
+executable test-odf
+    main-is:        TestODF.hs
+    hs-source-dirs: test
+    build-depends: sledge
+                 , hammer
+                 , queryforest
+                 , base
+                 , vector
+                 , random
+    if flag(tests)
+       buildable: True
+       ghc-options: -Wall -O2 -rtsopts -threaded
+    else
+       buildable: False
+
+executable test-sampler
+    main-is:        TestSampler.hs
+    hs-source-dirs: test
+    build-depends: sledge
+                 , hammer
+                 , queryforest
+                 , base
+                 , vector
+                 , random
+    if flag(tests)
+       buildable: True
+       ghc-options: -Wall -O2 -rtsopts -threaded
+    else
+       buildable: False
+
+test-suite test
+    type:           exitcode-stdio-1.0
+    main-is:        Main.hs
+    hs-source-dirs: test
+    build-depends: sledge
+                 , hammer
+                 , queryforest
+                 , base
+                 , QuickCheck
+                 , vector
+                 , random
+                 , tasty
+                 , tasty-hunit
+                 , tasty-quickcheck
+    other-modules: TestKernel
+                   TestTexture
+    ghc-options: -Wall -O2 -rtsopts -threaded
 
 Library
   build-depends:  base                    == 4.*

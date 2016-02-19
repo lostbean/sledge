@@ -305,6 +305,7 @@ instance M.MVector U.MVector SymmOp where
   basicLength (MV_SymmOp v)                     = M.basicLength v
   basicUnsafeSlice i n (MV_SymmOp v)            = MV_SymmOp $ M.basicUnsafeSlice i n v
   basicOverlaps (MV_SymmOp v1) (MV_SymmOp v2)   = M.basicOverlaps v1 v2
+  basicInitialize (MV_SymmOp v)                 = M.basicInitialize v
   basicUnsafeNew n                              = MV_SymmOp `liftM` M.basicUnsafeNew n
   basicUnsafeReplicate n (SymmOp x)             = MV_SymmOp `liftM` M.basicUnsafeReplicate n x
   basicUnsafeRead (MV_SymmOp v) i               = M.basicUnsafeRead v i >>= (return . SymmOp)
@@ -351,6 +352,7 @@ instance M.MVector U.MVector SymmAxis where
   basicLength (MV_SymmAxis v)                         = M.basicLength v
   basicUnsafeSlice i n (MV_SymmAxis v)                = MV_SymmAxis $ M.basicUnsafeSlice i n v
   basicOverlaps (MV_SymmAxis v1) (MV_SymmAxis v2)     = M.basicOverlaps v1 v2
+  basicInitialize (MV_SymmAxis v)                     = M.basicInitialize v
   basicUnsafeNew n                                    = MV_SymmAxis `liftM` M.basicUnsafeNew n
   basicUnsafeReplicate n (SymmAxis (x,y))             = MV_SymmAxis `liftM` M.basicUnsafeReplicate n (x, y)
   basicUnsafeRead (MV_SymmAxis v) i                   = M.basicUnsafeRead v i >>= (\(x, y) -> return $ SymmAxis (x,y))
@@ -398,6 +400,7 @@ instance M.MVector U.MVector FZPlane where
   basicLength (MV_FZPlane v)                        = M.basicLength v
   basicUnsafeSlice i n (MV_FZPlane v)               = MV_FZPlane $ M.basicUnsafeSlice i n v
   basicOverlaps (MV_FZPlane v1) (MV_FZPlane v2)     = M.basicOverlaps v1 v2
+  basicInitialize (MV_FZPlane v)                    = M.basicInitialize v
   basicUnsafeNew n                                  = MV_FZPlane `liftM` M.basicUnsafeNew n
   basicUnsafeReplicate n (FZPlane (x,y))            = MV_FZPlane `liftM` M.basicUnsafeReplicate n (x, y)
   basicUnsafeRead (MV_FZPlane v) i                  = M.basicUnsafeRead v i >>= (\(x, y) -> return $ FZPlane (x,y))
