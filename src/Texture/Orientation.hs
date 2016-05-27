@@ -5,6 +5,7 @@
   , NamedFieldPuns
   , RecordWildCards
   , TypeFamilies
+  , TemplateHaskell
   #-}
 
 -- |
@@ -33,72 +34,63 @@
 --  * Orientation Library Manual by Romain Quey
 --
 module Texture.Orientation
-       (  -- * Reference Frame
-         RefFrame (..)
-          -- * Angles
-       , Angle      (..)
-       , Deg        (..)
-       , Rad        (..)
-       , toDeg
-         -- * Rotation class
-       , Rot        (..)
-       , (=>#)
-       , getShortOmega
-       , getAbsShortOmega
-         -- * Quaternions
-       , Quaternion (quaterVec)
-       , mkUnsafeQuaternion
-       , mkQuaternion
-       , splitQuaternion
-       , unsafeMergeQuaternion
-       , mergeQuaternion
-       , antipodal
-       , composeQ0
-         -- * Euler
-       , Euler      (phi1, phi, phi2)
-       , mkEuler
-         -- * Axis-Angle
-       , AxisPair   (axisAngle)
-       , mkAxisPair
-         -- * Frank-Rodrigues
-       , Rodrigues  (rodriVec)
-       , mkRodrigues
-       , mkUnsafeRodrigues
-         -- * Matrix
-       , RotMatrix  (rotMat)
-       , mkUnsafeRotMatrix
-         -- * Vector rotation
-       , activeVecRotation
-       , passiveVecRotation
-         -- * Other functions
-       , getRTNdir
-       , get100dir
-       , quaterInterpolation
-       , averageQuaternion
-       , getScatterMatrix
-       , aproxToIdealAxis
-       , getAbsShortAngle
-       , getShortAngle
-       ) where
+  (  -- * Reference Frame
+    RefFrame (..)
+     -- * Angles
+  , Angle      (..)
+  , Deg        (..)
+  , Rad        (..)
+  , toDeg
+    -- * Rotation class
+  , Rot        (..)
+  , (=>#)
+  , getShortOmega
+  , getAbsShortOmega
+    -- * Quaternions
+  , Quaternion (quaterVec)
+  , mkUnsafeQuaternion
+  , mkQuaternion
+  , splitQuaternion
+  , unsafeMergeQuaternion
+  , mergeQuaternion
+  , antipodal
+  , composeQ0
+    -- * Euler
+  , Euler      (phi1, phi, phi2)
+  , mkEuler
+    -- * Axis-Angle
+  , AxisPair   (axisAngle)
+  , mkAxisPair
+    -- * Frank-Rodrigues
+  , Rodrigues  (rodriVec)
+  , mkRodrigues
+  , mkUnsafeRodrigues
+    -- * Matrix
+  , RotMatrix  (rotMat)
+  , mkUnsafeRotMatrix
+    -- * Vector rotation
+  , activeVecRotation
+  , passiveVecRotation
+    -- * Other functions
+  , getRTNdir
+  , get100dir
+  , quaterInterpolation
+  , averageQuaternion
+  , getScatterMatrix
+  , aproxToIdealAxis
+  , getAbsShortAngle
+  , getShortAngle
+  ) where
 
-import qualified Data.List                   as L
-import qualified Data.Vector.Unboxed         as U
-import qualified Data.Vector.Generic.Base    as G
-import qualified Data.Vector.Generic.Mutable as M
-
-import           Control.Monad               (liftM)
-import           Data.Vector                 (Vector)
-
-import           Control.DeepSeq
-import           Foreign
-import           Data.Ratio
-import           Numeric
-
-import           Hammer.Math.Algebra
-import           System.Random
-
--- import Debug.Trace
--- dbg s x = trace (s ++ show x) x
+import Control.DeepSeq
+import Data.Vector.Unboxed.Deriving
+import Data.Ratio
+import Linear.Decomp
+import Linear.Mat
+import Linear.Vect
+import Numeric
+import System.Random
+import qualified Data.Vector.Unboxed as U
 
 -- ==================================  Types ====================================
 
@@ -120,7 +112,7 @@ data RefFrame = ND
 -- Uses all directions with rotations from 0 to PI.
 newtype Quaternion =
   Quaternion
-  { quaterVec :: Vec4
+  { quaterVec :: Vec4D
   } deriving (Eq, NFData)
 
 instance Random Quaternion where
@@ -129,10 +121,10 @@ instance Random Quaternion where
     (Vec3 x y z, gen1) = randomR (zero, Vec3 1 1 1) gen
     -- Following : K. Shoemake., Uniform random rotations.
     -- In D. Kirk, editor, Graphics Gems III, pages 124-132. Academic, New York, 1992.
-    q0 = sqrt(1-x) * sin (2 * pi * y)
-    q1 = sqrt(1-x) * cos (2 * pi * y)
-    q2 = sqrt(x)   * sin (2 * pi * z)
-    q3 = sqrt(x)   * cos (2 * pi * z)
+    q0 = sqrt (1-x) * sin (2 * pi * y)
+    q1 = sqrt (1-x) * cos (2 * pi * y)
+    q2 = sqrt x     * sin (2 * pi * z)
+    q3 = sqrt x     * cos (2 * pi * z)
     in (mkQuaternion $ Vec4 q0 q1 q2 q3, gen1)
 
 -- | Angles in degrees.
@@ -161,22 +153,23 @@ data Euler =
 -- and the angle in radians.
 newtype AxisPair =
   AxisPair
-  { axisAngle :: (Vec3, Double)
+  { axisAngle :: (Vec3D, Double)
   } deriving (Eq, NFData)
 
 -- | Frank-Rodrigues representation.
 newtype Rodrigues =
   Rodrigues
-  { rodriVec :: Vec3
+  { rodriVec :: Vec3D
   } deriving (Eq, NFData)
 
 -- | Frank-Rodrigues representation.
 newtype RotMatrix =
   RotMatrix
-  { rotMat :: Mat3
-  } deriving (MultSemiGroup, Transposable, Inversable, IdMatrix, Eq, NFData)
+  { rotMat :: Mat3D
+  } deriving (MultSemiGroup, SquareMatrix, Eq, NFData)
 
-instance Matrix RotMatrix
+instance Transpose RotMatrix RotMatrix where
+  transpose = RotMatrix . transpose . rotMat
 
 -- ==================================  Angle class ===================================
 
@@ -201,7 +194,7 @@ toDeg = toAngle
 -- ===============================  Data constructors =================================
 
 -- | Safe constructor for axis-angle.
-mkAxisPair :: (Angle ang)=> Vec3 -> ang -> AxisPair
+mkAxisPair :: (Angle ang)=> Vec3D -> ang -> AxisPair
 mkAxisPair r omega
   | rlen > 0 = AxisPair ((1 / rlen) *& r, fromAngle omega)
   | otherwise = zerorot
@@ -216,50 +209,50 @@ mkEuler p1 p p2 = Euler
   , phi2 = fromAngle p2 }
 
 -- | Safe constructor for quaternions
-mkQuaternion :: Vec4 -> Quaternion
+mkQuaternion :: Vec4D -> Quaternion
 mkQuaternion v
   | l == 0    = Quaternion (Vec4 0 0 0 1)
   | q0 > 0    = Quaternion (v &* (1/l))
   | otherwise = Quaternion (v &* (-1/l))
   where
-    l  = len v
+    l  = vlen v
     q0 = _1 v
 
 -- | Constructor for Frank-Rodrigues.
-mkRodrigues :: (Angle ang)=> Vec3 -> ang -> Rodrigues
+mkRodrigues :: (Angle ang)=> Vec3D -> ang -> Rodrigues
 mkRodrigues v omega
-  | vlen > 0  = Rodrigues $ v &* (k / vlen)
+  | len > 0  = Rodrigues $ v &* (k / len)
   | otherwise = zerorot
   where
-    vlen = norm v
-    k    = tan ((fromAngle omega) / 2)
+    len = norm v
+    k   = tan (fromAngle omega / 2)
 
 -- | Splits the quaternion in two components: angle related and direction related.
-splitQuaternion :: Quaternion -> (Double, Vec3)
+splitQuaternion :: Quaternion -> (Double, Vec3D)
 splitQuaternion (Quaternion (Vec4 q0 q1 q2 q3)) = (q0, Vec3 q1 q2 q3)
 
 -- | Merges the two quaternion components: angle related and direction related.
-mergeQuaternion :: (Double, Vec3) -> Quaternion
+mergeQuaternion :: (Double, Vec3D) -> Quaternion
 mergeQuaternion (q0, Vec3 q1 q2 q3) = mkQuaternion (Vec4 q0 q1 q2 q3)
 
 -- | /Unsafe/ quaternion constructor. It assumes a normalized input.
-mkUnsafeQuaternion :: Vec4 -> Quaternion
+mkUnsafeQuaternion :: Vec4D -> Quaternion
 mkUnsafeQuaternion v
-  | (_1 v) > 0 = Quaternion v
-  | otherwise  = Quaternion $ neg v
+  | _1 v > 0  = Quaternion v
+  | otherwise = Quaternion $ neg v
 
 -- | /Unsafe/ rotation matrix constructor. It assumes a orthonormal matrix with
 -- unitary vector as input.
-mkUnsafeRotMatrix :: Mat3 -> RotMatrix
+mkUnsafeRotMatrix :: Mat3D -> RotMatrix
 mkUnsafeRotMatrix = RotMatrix
 
 -- | /Unsafe/ Frank-Rodrigues constructor.
-mkUnsafeRodrigues :: Vec3 -> Rodrigues
+mkUnsafeRodrigues :: Vec3D -> Rodrigues
 mkUnsafeRodrigues = Rodrigues
 
 -- | /Unsafe/ quaternion merging constructor. It assumes a normalized input where
 -- the single value and the vector in @R3@ form a unit vector in @R4@ (unit quaternion).
-unsafeMergeQuaternion :: (Double, Vec3) -> Quaternion
+unsafeMergeQuaternion :: (Double, Vec3D) -> Quaternion
 unsafeMergeQuaternion (q0, Vec3 q1 q2 q3) = mkUnsafeQuaternion (Vec4 q0 q1 q2 q3)
 
 -- =====================================  Rot class ======================================
@@ -419,7 +412,7 @@ instance Rot RotMatrix where
   a #<= b  = b .*. a  -- In matrix composition the multiplication is commuted
   invert   = transpose
   zerorot  = idmtx
-  getOmega = acosSafe . (\x -> 0.5 * (x - 1)). vecFoldr (+) . diagVec . rotMat
+  getOmega = acosSafe . (\x -> 0.5 * (x - 1)). sum . diagVec . rotMat
   toQuaternion = mat2quat
   fromQuaternion r = let
     Vec4 q0 q1 q2 q3 = quaterVec r
@@ -463,13 +456,13 @@ mat2quat (RotMatrix m)
 -- ================================== Other functions ==================================
 
 -- | Get the RD, TD and ND directions in the crystal frame.
-getRTNdir :: RotMatrix -> (Vec3, Vec3, Vec3)
+getRTNdir :: RotMatrix -> (Vec3D, Vec3D, Vec3D)
 getRTNdir (RotMatrix m) = let
   ( Mat3 rd td nd ) = transpose m
   in (rd, td, nd)
 
 -- | Get the axis [100] (crystal base) in the sample frame.
-get100dir :: RotMatrix -> (Vec3, Vec3, Vec3)
+get100dir :: RotMatrix -> (Vec3D, Vec3D, Vec3D)
 get100dir (RotMatrix (Mat3 e1 e2 e3)) = (e1, e2, e3)
 
 -- | Converts an angle in Radians from the @[0, 2*pi]@ range to @[-pi, pi]@ range.
@@ -501,7 +494,7 @@ antipodal = mkUnsafeQuaternion . neg . quaterVec
 
 -- | Apply a /active/ rotation on vector by quaternion. The vector is rotated around the
 -- quaternion axis.
-activeVecRotation :: Vec3 -> Quaternion -> Vec3
+activeVecRotation :: Vec3D -> Quaternion -> Vec3D
 activeVecRotation v q = let
   (q0, qv) = splitQuaternion q
   qvl = normsqr qv
@@ -513,7 +506,7 @@ activeVecRotation v q = let
 -- | Apply a /passive/ rotation (change of basis) on vector by quaternion. The passive
 -- rotation returns the equivalent input vector in the reference frame (basis) rotated by
 -- the quaternion.
-passiveVecRotation :: Vec3 -> Quaternion -> Vec3
+passiveVecRotation :: Vec3D -> Quaternion -> Vec3D
 passiveVecRotation v q = let
   (q0, qv) = splitQuaternion q
   k1 = (2*q0*q0 - 1) *& v
@@ -542,7 +535,7 @@ quaterInterpolation t (Quaternion pa) (Quaternion pb) = mkUnsafeQuaternion v
     yb = sin (omega *    t ) / s
 
 -- | Calculates the scatter matrix that describes a given distribution.
-getScatterMatrix :: U.Vector Quaternion -> Mat4
+getScatterMatrix :: U.Vector Quaternion -> Mat4D
 getScatterMatrix qs
   | n > 0     = total &* (1/n)
   | otherwise = zero
@@ -557,27 +550,27 @@ getScatterMatrix qs
 -- See "Averaging Quaternions", FL Markley, 2007
 averageQuaternion :: U.Vector Quaternion -> Quaternion
 averageQuaternion vq = mkQuaternion $ case i of
-  0 -> _1 v
-  1 -> _2 v
-  2 -> _3 v
-  _ -> _4 v
+  0 -> v1
+  1 -> v2
+  2 -> v3
+  _ -> v4
   where
     scatter  = getScatterMatrix vq
     (ev, ex) = symmEigen scatter
     -- sort decomposition by eigenvalues
     -- (highest eigenvalue = highest concentration value = distribution mode)
-    v = transpose ev
+    Mat4 v1 v2 v3 v4 = transpose ev
     i = U.maxIndex $ U.fromList [_1 ex, _2 ex, _3 ex, _4 ex]
 
 -- | Calculates the approximated integer representation of poles (e.g. < 10 2 2 >).
-aproxToIdealAxis :: Vec3 -> Double -> (Int, Int, Int)
+aproxToIdealAxis :: Vec3D -> Double -> (Int, Int, Int)
 aproxToIdealAxis (Vec3 x y z) err = let
   ls    = [x, y, z]
   ns    = map (numerator   . ratio) ls
   ds    = map (denominator . ratio) ls
   mmc   = foldr lcm 1 ds
   mdc   = foldr gcd 0 nzIntVaules
-  ratio = (flip approxRational) err
+  ratio = flip approxRational err
   intValues    = zipWith (\n d -> fromIntegral $ n * (div mmc d)) ns ds
   nzIntVaules  = filter (/= 0) intValues
   [x', y', z'] = case nzIntVaules of
@@ -590,7 +583,7 @@ aproxToIdealAxis (Vec3 x y z) err = let
 instance Show AxisPair where
   show (AxisPair (vec, theta)) = let
     --(x, y, z) = aproxToIdealAxis vec 0.05
-    in showPretty vec ++ " @ " ++ (show $ (toAngle theta :: Deg))
+    in showPretty vec ++ " @ " ++ show (toAngle theta :: Deg)
 
 instance Show Quaternion where
   show (Quaternion v) = "Q" ++ showPretty v
@@ -600,7 +593,7 @@ instance Show Rodrigues where
 
 instance Show Euler where
   show Euler{..} = let
-    foo a = show $ (toAngle a :: Deg)
+    foo a = show (toAngle a :: Deg)
     in "Euler(" ++ foo phi1 ++ ", " ++ foo phi ++ ", " ++ foo phi2 ++ ")"
 
 instance Show RotMatrix where
@@ -614,47 +607,7 @@ instance Show Rad where
 
 -- -------------------------------------------- Unbox Quaternion ----------------------------------------------------
 
-newtype instance U.MVector s Quaternion = MV_Quaternion (U.MVector s Vec4)
-newtype instance U.Vector    Quaternion = V_Quaternion  (U.Vector    Vec4)
-
-instance U.Unbox Quaternion
-
-instance M.MVector U.MVector Quaternion where
-  {-# INLINE basicLength #-}
-  {-# INLINE basicUnsafeSlice #-}
-  {-# INLINE basicOverlaps #-}
-  {-# INLINE basicUnsafeNew #-}
-  {-# INLINE basicUnsafeReplicate #-}
-  {-# INLINE basicUnsafeRead #-}
-  {-# INLINE basicUnsafeWrite #-}
-  {-# INLINE basicClear #-}
-  {-# INLINE basicSet #-}
-  {-# INLINE basicUnsafeCopy #-}
-  {-# INLINE basicUnsafeGrow #-}
-  basicLength (MV_Quaternion v)                         = M.basicLength v
-  basicUnsafeSlice i n (MV_Quaternion v)                = MV_Quaternion $ M.basicUnsafeSlice i n v
-  basicOverlaps (MV_Quaternion v1) (MV_Quaternion v2)   = M.basicOverlaps v1 v2
-  basicInitialize (MV_Quaternion v)                     = M.basicInitialize v
-  basicUnsafeNew n                                      = MV_Quaternion `liftM` M.basicUnsafeNew n
-  basicUnsafeReplicate n (Quaternion x)                 = MV_Quaternion `liftM` M.basicUnsafeReplicate n x
-  basicUnsafeRead (MV_Quaternion v) i                   = M.basicUnsafeRead v i >>= (return . Quaternion)
-  basicUnsafeWrite (MV_Quaternion v) i (Quaternion x)   = M.basicUnsafeWrite v i x
-  basicClear (MV_Quaternion v)                          = M.basicClear v
-  basicSet (MV_Quaternion v) (Quaternion x)             = M.basicSet v x
-  basicUnsafeCopy (MV_Quaternion v1) (MV_Quaternion v2) = M.basicUnsafeCopy v1 v2
-  basicUnsafeGrow (MV_Quaternion v) n                   = MV_Quaternion `liftM` M.basicUnsafeGrow v n
-
-instance G.Vector U.Vector Quaternion where
-  {-# INLINE basicUnsafeFreeze #-}
-  {-# INLINE basicUnsafeThaw #-}
-  {-# INLINE basicLength #-}
-  {-# INLINE basicUnsafeSlice #-}
-  {-# INLINE basicUnsafeIndexM #-}
-  {-# INLINE elemseq #-}
-  basicUnsafeFreeze (MV_Quaternion v)                 = V_Quaternion `liftM` G.basicUnsafeFreeze v
-  basicUnsafeThaw (V_Quaternion v)                    = MV_Quaternion `liftM` G.basicUnsafeThaw v
-  basicLength (V_Quaternion v)                        = G.basicLength v
-  basicUnsafeSlice i n (V_Quaternion v)               = V_Quaternion $ G.basicUnsafeSlice i n v
-  basicUnsafeIndexM (V_Quaternion v) i                = G.basicUnsafeIndexM v i >>= (return . Quaternion)
-  basicUnsafeCopy (MV_Quaternion mv) (V_Quaternion v) = G.basicUnsafeCopy mv v
-  elemseq _ (Quaternion x) t                          = G.elemseq (undefined :: Vector a) x t
+derivingUnbox "Quaternion"
+    [t| Quaternion -> (Double, Double, Double, Double) |]
+    [| \ (Quaternion (Vec4 x y z t)) -> (x, y, z, t) |]
+    [| \ (x, y, z, t) -> (Quaternion (Vec4 x y z t)) |]

@@ -1,19 +1,15 @@
-{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 {-# LANGUAGE OverloadedStrings #-}
-
 module File.InternalParsers where
 
+import Control.Applicative ((<|>))
+import Data.Attoparsec.ByteString.Char8
 import qualified Data.ByteString                  as B
 import qualified Data.ByteString.Char8            as BC
 import qualified Data.Attoparsec.ByteString.Char8 as AC
 
-import           Control.Applicative ((<|>), (<$>))
-
-import           Data.Attoparsec.ByteString.Char8
-
 getInfo :: B.ByteString -> Parser a -> Parser a
 getInfo ident func = do
-  stringInfo ident
+  _ <- stringInfo ident
   x <- func
   eol
   return x
@@ -37,8 +33,11 @@ parseNumber parser = do
   blanks
   num  <- parser
   next <- AC.peekChar
-  let func x = if (isBlank x || isEOL x) then return num else fail ("Invalid number -> " ++ show num ++ show x)
-  maybe (return num) func next
+  case next of
+    Just x
+      | isBlank x || isEOL x -> return num
+      | otherwise            -> fail $ "Invalid number -> " ++ show num ++ show x
+    _ -> return num
 
 -- | Skips blank chars (space and tab)
 blanks :: Parser ()

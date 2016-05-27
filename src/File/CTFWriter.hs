@@ -1,26 +1,25 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-
+{-# LANGUAGE
+    RecordWildCards
+  , OverloadedStrings
+  , TypeSynonymInstances
+  , FlexibleInstances
+  #-}
 module File.CTFWriter
-       ( renderCTFFile
-       ) where
+  ( renderCTFFile
+  ) where
 
+import Blaze.ByteString.Builder
+import Blaze.ByteString.Builder.Char8
+import Data.Text.Lazy.Builder.RealFloat
+import Data.Text (Text)
+import Data.Text.Lazy.Builder (toLazyText)
+import Data.Text.Lazy.Builder.Int
+import Data.Monoid ((<>))
+import Data.Vector (Vector)
 import qualified Data.Vector          as V
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Text.Lazy       as TL
-
-import           Data.Monoid            ((<>), mconcat, mempty)
-import           Data.Text              (Text)
-import           Data.Text.Lazy.Builder (toLazyText)
-import           Data.Vector            (Vector)
-
-import           Blaze.ByteString.Builder
-import           Blaze.ByteString.Builder.Char8
-import           Data.Text.Lazy.Builder.RealFloat
-import           Data.Text.Lazy.Builder.Int
 
 import           File.CTFReader
 import           Texture.Orientation

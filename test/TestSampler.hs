@@ -5,7 +5,7 @@ import qualified Data.Vector.Unboxed as U
 import System.IO
 
 import Hammer.VTK
-import Hammer.Math.Algebra
+import Linear.Vect
 
 import Texture.Bingham
 import Texture.Orientation

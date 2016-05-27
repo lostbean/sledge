@@ -1,22 +1,17 @@
-{-# LANGUAGE RecordWildCards   #-}
 module File.EBSD
-       ( EBSD
-       , toANG
-       , toCTF
-       , writeANG
-       , writeCTF
-       , readEBSD
-       , readEBSDToVoxBox
-       ) where
-
-import qualified Data.Vector         as V
-import qualified Data.Vector.Unboxed as U
+  ( EBSD
+  , toANG
+  , toCTF
+  , writeANG
+  , writeCTF
+  , readEBSD
+  , readEBSDToVoxBox
+  ) where
 
 import Control.Exception
-import Control.Monad
-import GHC.IO.Handle
-
 import Hammer.VoxBox
+import qualified Data.Vector         as V
+import qualified Data.Vector.Unboxed as U
 
 import File.ANGReader as A
 import File.ANGWriter
@@ -39,7 +34,7 @@ instance EBSD CTFdata where
 
 angpoint2ctfpoint :: ANGpoint -> CTFpoint
 angpoint2ctfpoint p = let
-  x = round $ 10 * (A.ci p)
+  x = round $ 10 * A.ci p
   in CTFpoint
      { C.phase        = A.phaseNum p
      , C.rotation     = A.rotation p
@@ -69,7 +64,7 @@ anggrid2ctfgrid g = CTFgrid
 
 anginfo2ctfinfo :: ANGinfo -> CTFinfo
 anginfo2ctfinfo i = CTFinfo
-  { C.project = (A.sampleID i) ++ "(from ANG)"
+  { C.project = A.sampleID i ++ "(from ANG)"
   , C.jobMode = "Grid"
   , C.author  = A.operator i
   , C.info    = ["workdistace=" ++ show (A.workDist i)]
@@ -91,7 +86,7 @@ ctfpoint2angpoint p = ANGpoint
   , A.xpos     = C.xpos p
   , A.ypos     = C.ypos p
   , A.iq       = fromIntegral $ C.bandcontrast p
-  , A.ci       = (fromIntegral $ C.bands p) / 10
+  , A.ci       = fromIntegral (C.bands p) / 10
   , A.phaseNum = C.phase p
   , A.detecInt = 1
   , A.fit      = C.angulardev p
@@ -141,16 +136,16 @@ ctfdata2angdata d = ANGdata
 readEBSD :: FilePath -> IO (Either ANGdata CTFdata)
 readEBSD f = let
   msg e1 e2 = "This file is neither a valid ANG file nor a valid CTF file.\n" ++ e1 ++ "\n" ++ e2
-  in catch (liftM Left (parseANG f)) (\eANG -> do
+  in catch (Left <$> parseANG f) (\eANG -> do
      let errANG = show (eANG :: SomeException)
-     catch (liftM Right (parseCTF f)) (\eCTF -> do
+     catch (Right <$> parseCTF f) (\eCTF -> do
         let errCTF = show (eCTF :: SomeException)
         error (msg errANG errCTF)
         )
   )
 
 readEBSDToVoxBox :: (U.Unbox a)=> (CTFpoint -> a) -> (ANGpoint -> a) -> Either ANGdata CTFdata -> VoxBox a
-readEBSDToVoxBox fctf fang = either (either error id . (flip A.angToVoxBox) fang) ((flip C.ctfToVoxBox) fctf)
+readEBSDToVoxBox fctf fang = either (either error id . flip A.angToVoxBox fang) (flip C.ctfToVoxBox fctf)
 
 writeANG :: (EBSD a)=> FilePath -> a -> IO ()
 writeANG f a = renderANGFile f (toANG a)

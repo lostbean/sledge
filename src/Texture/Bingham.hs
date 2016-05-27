@@ -1,50 +1,51 @@
-{-# LANGUAGE NamedFieldPuns             #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE BangPatterns               #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-
+{-# LANGUAGE
+    NamedFieldPuns
+  , RecordWildCards
+  , FlexibleInstances
+  , MultiParamTypeClasses
+  #-}
 module Texture.Bingham
-       ( Bingham
-       , concentrations
-       , directions
-       , normalization
-       , bingMode
-       , scatter
+  ( Bingham
+  , concentrations
+  , directions
+  , normalization
+  , bingMode
+  , scatter
 
-         -- * Main functions
-       , mkBingham
-       , binghamPDF
-       , sampleBingham
-       , fitBingham
+    -- * Main functions
+  , mkBingham
+  , binghamPDF
+  , sampleBingham
+  , fitBingham
+  , bingProduct
 
-         -- * Render Bingham distribution
-       , renderBingham
-       , renderBinghamOmega
-       , renderBinghamToEuler
+    -- * Render Bingham distribution
+  , renderBingham
+  , renderBinghamOmega
+  , renderBinghamToEuler
 
-       , testSampleFit
-       ) where
+  -- * Other Functions
+  , normalPDF
+  , multiNormalPDF
 
-import qualified Data.List                   as L
-import qualified Data.Vector                 as V
-import qualified Data.Vector.Unboxed         as U
+  , testSampleFit
+  ) where
 
-import           Control.Applicative ((<$>))
-import           Data.Vector.Unboxed (Vector)
-import           System.Random       (randomIO, randoms, newStdGen)
+import  Data.Function (on)
+import  Data.Vector.Unboxed (Vector)
+import  Hammer.Math.Optimum
+import  Hammer.VTK
+import  Linear.Decomp
+import  Linear.Mat
+import  Linear.Vect
+import  System.Random (randomIO, randoms, newStdGen)
+import qualified Data.List           as L
+import qualified Data.Vector         as V
+import qualified Data.Vector.Unboxed as U
 
-import           Hammer.Math.Algebra
-import           Hammer.Math.Optimum
-import           Hammer.VTK
-
-import           Texture.Orientation
-import           Texture.HyperSphere
-import           Texture.Bingham.Constant
-
-import           Debug.Trace
-dbg s x = trace (s L.++ show x) x
+import  Texture.Orientation
+import  Texture.HyperSphere
+import  Texture.Bingham.Constant
 
 data DFDzx =
   DFDzx
@@ -55,24 +56,24 @@ data DFDzx =
 
 -- | Variance directions of the Bingham distribution. The direction must
 -- normalized and orthonogal to each other.
-newtype DistOri = DistOri { distOri :: Mat4 } deriving (Show)
+newtype DistOri = DistOri { distOri :: Mat4D } deriving (Show)
 
 data Bingham =
   Bingham
-  { concentrations :: Vec4        -- ^ concentration values for each directions where
+  { concentrations :: Vec4D       -- ^ concentration values for each directions where
                                   -- z1 <= z2 <= z3 <= (z4 = 0)
   , directions     :: DistOri     -- ^ unitary vectors Vx in rows
-  , bingMatrix     :: Mat4
+  , bingMatrix     :: Mat4D
   , normalization  :: Double      -- ^ normalization factor F
   , bingMode       :: Quaternion  -- ^ mode of the distribution
   , partials       :: DFDzx       -- ^ partials derivates of F in each direction
-  , scatter        :: Mat4        -- ^ scatter matrix
+  , scatter        :: Mat4D       -- ^ scatter matrix
   } deriving (Show)
 
 mkBingham :: (Double, Quaternion) -> (Double, Quaternion) -> (Double, Quaternion) -> Bingham
 mkBingham  x1 x2 x3 = let
   x4 = (0, lastDir (snd x1) (snd x2) (snd x3))
-  zd = L.sortBy (\a b -> fst a `compare` fst b) [x1, x2, x3, x4]
+  zd = L.sortBy (compare `on` fst) [x1, x2, x3, x4]
 
   -- find the highest concentration and set it as the mode and equal zero
   -- therefore all others concentrations are negative
@@ -84,7 +85,7 @@ mkBingham  x1 x2 x3 = let
   -- add check orthogonality
   m = Mat4 (quaterVec d1) (quaterVec d2) (quaterVec d3) (quaterVec mode)
   z = Vec4 z1 z2 z3 0
-  c = m .*. (diagMtx z) .*. (transpose m)
+  c = m .*. (diag z) .*. (transpose m)
   -- space of 3-sphere (S3 c R4)
   (f, (dz1, dz2, dz3, _)) = computeAllF z1 z2 z3 0
   dF  = DFDzx dz1 dz2 dz3
@@ -100,12 +101,9 @@ binghamPDF Bingham{..} q = let
 
 -- =================================== Statistics ======================================
 
-scatterMatrix :: Double -> DistOri -> DFDzx -> Mat4
+scatterMatrix :: Double -> DistOri -> DFDzx -> Mat4D
 scatterMatrix f DistOri{..} DFDzx{..} = let
-  v1   = _1 distOri
-  v2   = _2 distOri
-  v3   = _3 distOri
-  mode = _4 distOri
+  Mat4 v1 v2 v3 mode = distOri
   km = 1 - (dFdz1 + dFdz2 + dFdz3) / f
   sm = km *& outer mode mode
   s1 = (dFdz1 / f) *& outer v1 v1
@@ -115,7 +113,7 @@ scatterMatrix f DistOri{..} DFDzx{..} = let
 
 -- | Break the distribution directions (3x4 matrix) in
 -- a 3x3 matrix by extracting the colunm n.
-cutDistOri :: (Vec4, Vec4, Vec4) -> Int -> (Mat3, Vec3)
+cutDistOri :: (Vec4D, Vec4D, Vec4D) -> Int -> (Mat3D, Vec3D)
 cutDistOri (v1, v2, v3) n
   | n == 0    = (mkMat cut0, mkVec _1)
   | n == 1    = (mkMat cut1, mkVec _2)
@@ -134,8 +132,10 @@ lastDir :: Quaternion -> Quaternion -> Quaternion -> Quaternion
 lastDir q1 q2 q3 = let
   dir  = (quaterVec q1, quaterVec q2, quaterVec q3)
   -- find the sub matrix 3x3 with the maximum abs determinat
+  getDet :: Mat3D -> Double
+  getDet = abs . det
   dets = V.generate 4 (cutDistOri dir)
-  cut  = V.maxIndex $ V.map (abs . det . fst) dets
+  cut  = V.maxIndex $ V.map (getDet . fst) dets
   (m, c) = dets V.! cut
   -- solve the linear system A x = b
   solve a b = (inverse a) *. b
@@ -155,7 +155,7 @@ sampleBingham dist@Bingham{..} n = func [] ti wi qi burn (0 :: Int)
   where
     (v, conc) = symmEigen scatter
     burn      = -20
-    z         = vecMap sqrt conc
+    z         = fmap sqrt conc
 
     qi = bingMode
     ti = binghamPDF dist qi        -- target
@@ -169,7 +169,7 @@ sampleBingham dist@Bingham{..} n = func [] ti wi qi burn (0 :: Int)
         a = (p0 * t) / (p * t0)      -- candidate changes of approvel
         out rnd
           -- trace ("> ratio = " ++ show (fromIntegral accepted / fromIntegral count))
-          | count > n = return $  acc
+          | count > n = return acc
           -- burn-in (training samples)
           | count < 0 &&
             a > rnd   = func       acc  t  p  q  (count+1) accepted
@@ -208,17 +208,18 @@ normalSample mu sigma rnd = mu + sigma * sqrt 2 * invERF (2 * rnd - 1)
 -- | Sample from a multivariate normal in principal components form for
 -- a zero-mean distribution. Uses the eigenvectors and eigenvalues to calculate
 -- the inverse of the covariance matrix.
-multiNormalRand :: Vec4 -> Mat4 -> IO Vec4
+multiNormalRand :: Vec4D -> Mat4D -> IO Vec4D
 multiNormalRand z cv = randomIO >>= sample
   where
     -- randomIO gives [-1,1] therefore needs abs before call normalSample
-    fVecRnd = vecZipWith (\s r -> normalSample 0 s (abs r)) z
+    fVecRnd = zipVec4With  (\s r -> normalSample 0 s (abs r)) z
     sample  = return . (.* (transpose cv)) . fVecRnd
+    zipVec4With f (Vec4 a1 b1 c1 d1) (Vec4 a2 b2 c2 d2) = Vec4 (f a1 a2) (f b1 b2) (f c1 c2) (f d1 d2)
 
 -- | Sample from an angular central gaussian zero-mean distribution and add
 -- it to a given quaternion. Used to create innovation in the Metropolis Hasting
 -- sampler.
-quaternionNormalRand :: Vec4 -> Mat4 -> Quaternion -> IO Quaternion
+quaternionNormalRand :: Vec4D -> Mat4D -> Quaternion -> IO Quaternion
 quaternionNormalRand z cv q = let
   foo = mkQuaternion . (&+ quaterVec q)
   in foo <$> multiNormalRand z cv
@@ -226,44 +227,44 @@ quaternionNormalRand z cv q = let
 -- | Compute an angular central gaussian pdf in principal components form for
 -- a zero-mean distribution. Uses the eigenvectors and eigenvalues to calculate
 -- of the inverse of the covariance matrix.
-centralGaussianPDF :: Vec4 -> Mat4 -> Quaternion -> Double
+centralGaussianPDF :: Vec4D -> Mat4D -> Quaternion -> Double
 centralGaussianPDF z cv qx = let
-  inte = vecFoldr (*) z
+  inte = product z
   d    = 4
   x    = quaterVec qx
   k    = inte * surface_area_sphere (d - 1)
   -- Is the same as: SUM ( <dx, V[i]> / z[i] )^2
-  e    = normsqr $ (x .* (transpose cv)) &! (vecMap (1/) z)
+  e    = normsqr $ (x .* (transpose cv)) &! (fmap (1/) z)
   in 1 / (k * e ** (fromIntegral d / 2))
 
 -- | Compute a multivariate normal pdf in principal components form.
 -- Uses the eigenvectors and eigenvalues to calculate the inverse of
 -- the covariance matrix.
-multiNormalPDF :: Vec4 -> Mat4 -> Quaternion -> Quaternion -> Double
+multiNormalPDF :: Vec4D -> Mat4D -> Quaternion -> Quaternion -> Double
 multiNormalPDF z cv qmu qx = let
-  inte = vecFoldr (*) z
+  inte = product z
   mu = quaterVec qmu
   x  = quaterVec qx
   d  = 4
   dx = x &- mu
   k  = ((2 * pi) ** (d/2)) * inte
   -- Is the same as: SUM ( <dx, V[i]> / z[i] )^2
-  e  = normsqr $ (dx .* (transpose cv)) &! (vecMap (1/) z)
+  e  = normsqr $ (dx .* (transpose cv)) &! (fmap (1/) z)
   in (exp $ (-0.5) * e) / k
 
 -- ===================================== Bingham Fit =====================================
 
-newtype DFF  = DFF {unDFF :: Vec4} deriving (Show)
+newtype DFF  = DFF {unDFF :: Vec4D} deriving (Show)
 
 -- | Derive the main distribution axes and their relative intensities from an scatter matrix.
 -- The output is given in crescent order of intensity, therefore, the last pair (intensity, axis)
 -- is the distribution mode.
-decomposeScatter :: Mat4 -> (Vec4, Mat4)
+decomposeScatter :: Mat4D -> (Vec4D, Mat4D)
 decomposeScatter scatter = let
   (ev, ex) = symmEigen scatter
   -- sort decomposition by eigenvalues (highest eigenvalue -> highest concentration value)
   v = transpose ev
-  xs = zip [_1 ex, _2 ex, _3 ex, _4 ex] [_1 v, _2 v, _3 v, _4 v]
+  xs = zip [_1 ex, _2 ex, _3 ex, _4 ex] [_R1 v, _R2 v, _R3 v, _R4 v]
   (sortex, sortev) = unzip $ L.sortBy (\a b -> compare (fst a) (fst b)) xs
   -- v4 x4 will be axis with the highest eigenvalue (the highest concentration or mode)
   [v1, v2, v3, v4] = sortev
@@ -280,25 +281,25 @@ fitBingham qs = let
   (z1, z2, z3) = lookupConcentration (DFF eval)
   in mkBingham
      -- for positive concentrations
-     (z1, mkQuaternion $ _1 evec)
-     (z2, mkQuaternion $ _2 evec)
-     (z3, mkQuaternion $ _3 evec)
+     (z1, mkQuaternion $ _R1 evec)
+     (z2, mkQuaternion $ _R2 evec)
+     (z3, mkQuaternion $ _R3 evec)
 
 -- | Find the concentration values using the gradient descent method.
 lookupConcentration :: DFF -> (Double, Double, Double)
 lookupConcentration dFF = unVec3 $ bfgs defaultBFGS (errorFunc dFF) zero
 
-evaldFF :: Vec3 -> DFF
+evaldFF :: Vec3D -> DFF
 evaldFF (Vec3 z1 z2 z3) = let
   (f, (dFdz1, dFdz2, dFdz3, dFdz4)) = computeAllF z1 z2 z3 0
   in DFF $ Vec4 (dFdz1 / f) (dFdz2 / f) (dFdz3 / f) (dFdz4 / f)
 
 -- | Evaluates the error function.
-evalError :: DFF -> Vec3 -> Double
+evalError :: DFF -> Vec3D -> Double
 evalError dY z = normsqr $ (unDFF $ evaldFF z) &- (unDFF dY)
 
 -- | Calculates the partial derivatives of the error function.
-errorFunc :: DFF -> Vec3 -> (Double, Vec3)
+errorFunc :: DFF -> Vec3D -> (Double, Vec3D)
 errorFunc dY (Vec3 z1 z2 z3) = let
   k = 0.001
   fdz z
@@ -316,7 +317,7 @@ errorFunc dY (Vec3 z1 z2 z3) = let
   dg1 = (g1 - g) / dz1
   dg2 = (g2 - g) / dz2
   dg3 = (g3 - g) / dz3
-  in (g, (Vec3 dg1 dg2 dg3))
+  in (g, Vec3 dg1 dg2 dg3)
 
 -- =============================== Distribution product ==================================
 
@@ -332,18 +333,18 @@ bingProduct bing1 bing2 = let
 
 -- ====================================== Plot Space =====================================
 
-renderPoints :: [Quaternion] -> VTK Vec3
-renderPoints = renderSO3PointsVTK . U.map (quaternionToSO3) . U.fromList
+renderPoints :: [Quaternion] -> VTK Vec3D
+renderPoints = renderSO3PointsVTK . U.map quaternionToSO3 . U.fromList
 
 -- | Render one sphere with n divisions of a the Bingham distribution at
 -- a fixed rotation angle (Omega ~ [0 .. 2*pi]).
-renderBinghamOmega :: Bingham -> Double -> VTK Vec3
+renderBinghamOmega :: Bingham -> Double -> VTK Vec3D
 renderBinghamOmega dist omega = renderSO2VTK func
   where
     func = binghamPDF dist . so3ToQuaternion . so2ToSO3 omega
 
 -- | Render one sphere with n divisions of a the Bingham distribution.
-renderBingham :: Bingham -> VTK Vec3
+renderBingham :: Bingham -> VTK Vec3D
 renderBingham dist = renderSO3SolidVTK func
   where
     func = binghamPDF dist . so3ToQuaternion
@@ -430,4 +431,4 @@ testNormalization z1 z2 z3 = let
       qs = take n $ randoms gen
       s  = sum $ map (binghamPDF dist) qs
       v  = surface_area_sphere 3
-    return $ (v / (fromIntegral n)) * s
+    return $ (v / fromIntegral n) * s

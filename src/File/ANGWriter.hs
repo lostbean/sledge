@@ -1,28 +1,27 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-
+{-# LANGUAGE
+    RecordWildCards
+  , OverloadedStrings
+  , TypeSynonymInstances
+  , FlexibleInstances
+  #-}
 module File.ANGWriter
-       ( renderANGFile
-       ) where
+  ( renderANGFile
+  ) where
 
+import Blaze.ByteString.Builder
+import Blaze.ByteString.Builder.Char8
+import Data.Monoid ((<>))
+import Data.Text (Text)
+import Data.Text.Lazy.Builder (toLazyText)
+import Data.Text.Lazy.Builder.Int
+import Data.Text.Lazy.Builder.RealFloat
+import Data.Vector (Vector)
 import qualified Data.Vector          as V
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BSL
 
-import           Data.Monoid            ((<>), mconcat)
-import           Data.Text              (Text)
-import           Data.Text.Lazy.Builder (toLazyText)
-import           Data.Vector            (Vector)
-
-import           Blaze.ByteString.Builder
-import           Blaze.ByteString.Builder.Char8
-import           Data.Text.Lazy.Builder.RealFloat
-import           Data.Text.Lazy.Builder.Int
-
-import           File.ANGReader
-import           Texture.Orientation
+import File.ANGReader
+import Texture.Orientation
 
 renderANGFile :: String -> ANGdata -> IO ()
 renderANGFile fileName ang = let
@@ -32,7 +31,7 @@ renderANGFile fileName ang = let
 renderANGdata :: ANGdata -> Builder
 renderANGdata ANGdata{..} =
   headRenderA grid ebsdInfo
-  <> (mconcat $ map ((comment <>) . phaseRender) phases)
+  <> mconcat (map ((comment <>) . phaseRender) phases)
   <> comment
   <> gridRender grid
   <> comment
@@ -67,7 +66,7 @@ phaseRender ANGphase{..} =
   <> latticeRender              latticeCons
   <> setInfo "# NumberFamilies" numFamilies
   <> hklRender hklFamilies
-  <> (mconcat $ map elasticRender elasticConst)
+  <> mconcat (map elasticRender elasticConst)
   <> categoryRender categories
 
 latticeRender :: (Double, Double, Double, Double, Double, Double) -> Builder

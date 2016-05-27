@@ -1,19 +1,20 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE BangPatterns    #-}
-
+{-# LANGUAGE
+    RecordWildCards
+  , BangPatterns
+  #-}
 module Texture.IsoSphere
-       ( IsoSphere (subLevel, vertices, faces, centers)
-       , isoSphereZero
-       , isoSphere
-       , refineIsoSphere
-       , scaleIsoSphere
-       , angularDistance
-       , nearestPoint
-       , genIsoSphereSO3Grid
-       , getOptSubDivisionLevel
-       , renderIsoSphereFaces
-       , renderQuaternions
-       ) where
+  ( IsoSphere (subLevel, vertices, faces, centers)
+  , isoSphereZero
+  , isoSphere
+  , refineIsoSphere
+  , scaleIsoSphere
+  , angularDistance
+  , nearestPoint
+  , genIsoSphereSO3Grid
+  , getOptSubDivisionLevel
+  , renderIsoSphereFaces
+  , renderQuaternions
+  ) where
 
 import qualified Data.List                   as L
 import qualified Data.Vector                 as V
@@ -25,22 +26,20 @@ import Data.Function    (on)
 import Control.Monad.ST (runST, ST)
 import Data.STRef
 
-import Hammer.Math.Algebra
+import Linear.Vect
 import Hammer.VTK
 
 import Texture.Orientation
 import Texture.Symmetry
-
---import Debug.Trace
 
 -- | IsoSphere is an geodesic grid on sphere that is based on the subdivision of
 -- isodecahedron. It has an uniform and homogeneous distribution of points.
 data IsoSphere
   = IsoSphere
   { subLevel :: !Int
-  , vertices :: U.Vector Vec3
+  , vertices :: U.Vector Vec3D
   , faces    :: V.Vector (U.Vector (Int, Int, Int))
-  , centers  :: V.Vector (U.Vector Vec3)
+  , centers  :: V.Vector (U.Vector Vec3D)
   } deriving (Show)
 
 -- | Creates an IsoShpere with given subdivision level.
@@ -71,7 +70,7 @@ isoSphereZero = let
      , centers  = V.singleton (U.map (getFaceCenter vs) fs)
      }
 
-getFaceCenter :: (DotProd s, MultiVec s, UM.Unbox s)=> U.Vector s -> (Int, Int, Int) -> s
+getFaceCenter :: (DotProd a v, LinearMap a v, Norm a v, UM.Unbox (v a)) => U.Vector (v a) -> (Int, Int, Int) -> v a
 getFaceCenter vs (i1, i2, i3) = normalize $ (v1 &+ v3 &+ v2) &* (1/3)
   where
     v1 = vs U.! i1
@@ -81,7 +80,7 @@ getFaceCenter vs (i1, i2, i3) = normalize $ (v1 &+ v3 &+ v2) &* (1/3)
 -- | Refine IsoSphere by subdividing each triangular face in four new triangles.
 refineIsoSphere :: IsoSphere -> IsoSphere
 refineIsoSphere ms@IsoSphere {..} = let
-  fs    = if V.null faces then U.empty else (V.last faces)
+  fs    = if V.null faces then U.empty else V.last faces
   vsize = U.length vertices
   fsize = U.length fs
 
@@ -93,7 +92,7 @@ refineIsoSphere ms@IsoSphere {..} = let
       v12 <- addAddGetNewPos poll (v1, v2)
       v23 <- addAddGetNewPos poll (v2, v3)
       v31 <- addAddGetNewPos poll (v3, v1)
-      UM.write mf (foffset    ) (v12, v23, v31)
+      UM.write mf foffset       (v12, v23, v31)
       UM.write mf (foffset + 1) (v31, v1,  v12)
       UM.write mf (foffset + 2) (v12, v2,  v23)
       UM.write mf (foffset + 3) (v23, v3,  v31)
@@ -102,7 +101,7 @@ refineIsoSphere ms@IsoSphere {..} = let
     -- new list of faces
     mf <- UM.replicate newfsize (-1,-1,-1)
     -- initialize table of edges
-    me <- VM.replicate vsize    (U.empty)
+    me <- VM.replicate vsize U.empty
     -- initialize counter to the next position after 'vertices'
     mk <- newSTRef vsize
     -- run subdivision (index only)
@@ -124,7 +123,7 @@ refineIsoSphere ms@IsoSphere {..} = let
 
 -- | Calculate a new points for each existing edge and add it to its correspondent position
 -- in a new vertex list.
-fillVertices :: V.Vector (U.Vector (Int, Int)) -> Int -> U.Vector Vec3 -> ST s (U.Vector Vec3)
+fillVertices :: V.Vector (U.Vector (Int, Int)) -> Int -> U.Vector Vec3D -> ST s (U.Vector Vec3D)
 fillVertices edges vmax points = do
   mv <- UM.new vmax
   let
@@ -204,7 +203,7 @@ getOptSubDivisionLevel a = go 0
 
 -- | Fast query to the nearest point. N-aray tree search with expected time complexity
 -- O(l) where l is the subdivision level.
-nearestPoint :: IsoSphere -> Vec3 -> (Int, Vec3, Double)
+nearestPoint :: IsoSphere -> Vec3D -> (Int, Vec3D, Double)
 nearestPoint IsoSphere{..} q = getClosest 0 fid0
   where
     lmax = V.length faces - 1
@@ -231,24 +230,18 @@ nearestPoint IsoSphere{..} q = getClosest 0 fid0
       xs = map (\i -> let v = vertices U.! i in (i, v, getD v)) [ia, ib, ic]
       in L.minimumBy (compare `on` (\(_, _, d) -> d)) xs
 
-naiveNearestPoint :: IsoSphere -> Vec3 -> (Int, Vec3, Double)
-naiveNearestPoint iso q = let
-  v  = vertices iso
-  v2 = U.imap (\i x -> (i, x, acos ((normalize q) &. x))) v
-  in U.minimumBy (compare `on` (\(_,_,d) -> d)) v2
-
 -- | Render IsoSphere faces.
-renderIsoSphereFaces :: IsoSphere -> [VTKAttrPointValue Vec3] -> VTK Vec3
+renderIsoSphereFaces :: IsoSphere -> [VTKAttrPointValue Vec3D] -> VTK Vec3D
 renderIsoSphereFaces IsoSphere{..} attrs = mkUGVTK "IsoSphere" vertices fs attrs []
   where fs = if V.null faces then U.empty else V.last faces
 
 -- | Render quaternion points.
-renderQuaternions :: U.Vector Quaternion -> [VTKAttrPointValue Vec3] -> VTK Vec3
+renderQuaternions :: U.Vector Quaternion -> [VTKAttrPointValue Vec3D] -> VTK Vec3D
 renderQuaternions qs attrs = mkUGVTK "IsoSpace" (U.map quaternionToVec3 qs) is attrs []
   where is = U.generate (U.length qs) id
 
-quaternionToVec3 :: Quaternion -> Vec3
+quaternionToVec3 :: Quaternion -> Vec3D
 quaternionToVec3 q = let
   (q0, qv) = splitQuaternion q
   omega = 2 * acos q0
-  in omega *& (normalize qv)
+  in omega *& normalize qv

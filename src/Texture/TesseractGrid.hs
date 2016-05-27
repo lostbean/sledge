@@ -1,52 +1,48 @@
-{-# LANGUAGE DeriveGeneric   #-}
-{-# LANGUAGE RecordWildCards #-}
-
+{-# LANGUAGE
+    DeriveGeneric
+  , RecordWildCards
+  #-}
 module Texture.TesseractGrid
-       ( TesseractPoint (..)
-       , TesseractGrid (..)
-       , tesseractToQuaternion
-       , quaternionToTesseract
-       , volumeGridCell
-       , genQuaternionGrid
-       , genTesseractGrid2
-       , genTesseractGrid
-       , getTesseractPos
-       , emptyTesseract
-       , binningTesseract
-       , accuTesseract
-       , updateTesseract
-       , tesseractZipWith
-       , tesseractMap
-       , maxTesseractPoint
-       , plotTesseract
-       , plotTesseractPoints
+  ( TesseractPoint (..)
+  , TesseractGrid (..)
+  , tesseractToQuaternion
+  , quaternionToTesseract
+  , volumeGridCell
+  , genQuaternionGrid
+  , genTesseractGrid2
+  , genTesseractGrid
+  , getTesseractPos
+  , emptyTesseract
+  , binningTesseract
+  , accuTesseract
+  , updateTesseract
+  , tesseractZipWith
+  , tesseractMap
+  , maxTesseractPoint
+  , plotTesseract
+  , plotTesseractPoints
 
-       , testNormalization
-       , printTesseract
-       ) where
+  , testNormalization
+  , printTesseract
+  ) where
 
+import  Data.Binary
+import  Data.Vector  (Vector)
+import  GHC.Generics (Generic)
+import  Data.Vector.Binary ()
+import  Hammer.VTK
+import  Linear.Vect
+import  System.Random
 import qualified Data.Vector         as V
 import qualified Data.Vector.Unboxed as U
 
-import           Data.Vector  (Vector)
-import           GHC.Generics (Generic)
-
-import           Data.Binary
-import           Data.Vector.Binary ()
-import           System.Random
-
-import           Hammer.Math.Algebra
-import           Hammer.VTK
-import           Texture.Orientation
-
---import           Debug.Trace
---dbg s x = trace (s ++ show x) x
+import  Texture.Orientation
 
 data TesseractPoint
-  = Cell1 Vec3
-  | Cell2 Vec3
-  | Cell3 Vec3
-  | Cell4 Vec3
+  = Cell1 Vec3D
+  | Cell2 Vec3D
+  | Cell3 Vec3D
+  | Cell4 Vec3D
   deriving (Show)
 
 data TesseractGrid a
@@ -60,7 +56,7 @@ data TesseractGrid a
 
 instance (Binary a)=> Binary (TesseractGrid a)
 
--- ============================= Basic Functions ========================================= 
+-- ============================= Basic Functions =========================================
 
 tesseractToQuaternion :: TesseractPoint -> Quaternion
 tesseractToQuaternion tp = case tp of
@@ -103,7 +99,7 @@ ixToTessPos m ix = (x, y, z)
 
 getTesseractPos :: Int -> TesseractPoint -> (Int, (Int, Int, Int))
 getTesseractPos m tp = let
-  step = 2 / (fromIntegral m)
+  step = 2 / fromIntegral m
   func = min (m-1) . floor . (\x -> (x + 1) / step)
   foo c (Vec3 x y z) = (c, (func x, func y, func z))
   in case tp of
@@ -119,16 +115,16 @@ getTesseractPoint m (cell, (ix, iy, iz))
   | cell == 3 = Cell3 v
   | otherwise = Cell4 v
   where
-    step = 2 / (fromIntegral m)
+    step = 2 / fromIntegral m
     foo = (\x -> x - 1 + 0.5 * step) . (* step) . fromIntegral
     v = Vec3 (foo ix) (foo iy) (foo iz)
 
--- ============================== Grid functions ========================================= 
+-- ============================== Grid functions =========================================
 
 genQuaternionGrid :: Int -> U.Vector Quaternion
 genQuaternionGrid m = let
-  step = 2 / (fromIntegral m)
-  x0   = step/2 - 1
+  step = 2 / fromIntegral m
+  x0   = step / 2 - 1
   foo  = (x0 +) . (step *) . fromIntegral
   lin  = [foo i | i <- [0 .. (m - 1)]]
   -- Use X -> Y -> Z sequence (X is fast increment)
@@ -136,18 +132,18 @@ genQuaternionGrid m = let
                     | z <- lin
                     , y <- lin
                     , x <- lin ]
-  in (U.map (tesseractToQuaternion . Cell1) cell) U.++
-     (U.map (tesseractToQuaternion . Cell2) cell) U.++
-     (U.map (tesseractToQuaternion . Cell3) cell) U.++
-     (U.map (tesseractToQuaternion . Cell4) cell)
+  in U.map (tesseractToQuaternion . Cell1) cell U.++
+     U.map (tesseractToQuaternion . Cell2) cell U.++
+     U.map (tesseractToQuaternion . Cell3) cell U.++
+     U.map (tesseractToQuaternion . Cell4) cell
 
 genTesseractGrid2 :: Int -> (Quaternion -> a) -> TesseractGrid a
 genTesseractGrid2 m func = genTesseractGrid m (func . tesseractToQuaternion)
 
 genTesseractGrid :: Int -> (TesseractPoint -> a) -> TesseractGrid a
 genTesseractGrid m func = let
-  step = 2 / (fromIntegral m)
-  x0   = step/2 - 1
+  step = 2 / fromIntegral m
+  x0   = step / 2 - 1
   foo  = (x0 +) . (step *) . fromIntegral
   lin  = [foo i | i <- [0 .. (m - 1)]]
   -- Use X -> Y -> Z sequence (X is fast increment)
@@ -236,21 +232,21 @@ maxTesseractPoint TesseractGrid{..} = let
   ms = V.fromList [m1, m2, m3, m4]
   in (getTesseractPoint gridSize (c+1, ixToTessPos gridSize $ ms V.! c))
 
--- ============================= Plotting function ======================================= 
+-- ============================= Plotting function =======================================
 
 plotTesseract :: (RenderElemVTK a)=> TesseractGrid a -> VTK a
 plotTesseract t = let
   m     = gridSize t
-  step  = 2 / (fromIntegral m)
+  step  = 2 / fromIntegral m
   orig  = 0.5 * step - 1
-  attr1 = mkPointAttr "Cell-1" ((cell1 t) V.!)
-  attr2 = mkPointAttr "Cell-2" ((cell2 t) V.!)
-  attr3 = mkPointAttr "Cell-3" ((cell3 t) V.!)
-  attr4 = mkPointAttr "Cell-4" ((cell4 t) V.!)
+  attr1 = mkPointAttr "Cell-1" (cell1 t V.!)
+  attr2 = mkPointAttr "Cell-2" (cell2 t V.!)
+  attr3 = mkPointAttr "Cell-3" (cell3 t V.!)
+  attr4 = mkPointAttr "Cell-4" (cell4 t V.!)
   attrs = [attr1, attr2, attr3, attr4]
   in mkSPVTK "Tesseract" (m+1, m+1, m+1) (orig, orig, orig) (step, step, step) attrs
 
-plotTesseractPoints :: U.Vector Quaternion -> VTK Vec3
+plotTesseractPoints :: U.Vector Quaternion -> VTK Vec3D
 plotTesseractPoints qs = let
   (cs, ps) = U.unzip $ U.map (foo . quaternionToTesseract) qs
   attr  = mkPointValueAttr  "Cell" (\i _ -> cs U.! i)
@@ -261,7 +257,7 @@ plotTesseractPoints qs = let
     Cell4 v -> (4, v)
   in mkUGVTK "Tesseract" ps (V.generate (U.length ps) id) [attr] []
 
--- ============================= Test Function =========================================== 
+-- ============================= Test Function ===========================================
 
 testBinning :: IO (TesseractGrid Double)
 testBinning = let
@@ -288,11 +284,11 @@ printTesseract t fname = let
   vtk = plotTesseract t
   in writeUniVTKfile ("/home/edgar/Desktop/" ++ fname ++ ".vti") True vtk
 
-test :: IO (Bool)
+test :: IO Bool
 test = do
   let m = 10
   c <- randomRIO (1, 4)
-  n <- randomRIO (0, m*m*m - 1)
+  n <- randomRIO (0, m * m * m - 1)
   let
     t0 = emptyTesseract m 0
     p = getTesseractPoint m (c, ixToTessPos m n)
@@ -305,7 +301,7 @@ test = do
     qm = tesseractToQuaternion $ maxTesseractPoint t1
     vtk = plotTesseractPoints (U.fromList [q, qm])
   printTesseract t1 "tessTest"
-  writeUniVTKfile ("/home/edgar/Desktop/tessTest.vtu") True vtk
+  writeUniVTKfile "/home/edgar/Desktop/tessTest.vtu" True vtk
   print (q, qm)
   putStr "(cell, linear index, pos) = " >> print (c, n, ixToTessPos m n)
   putStr "TessPoint = "            >> print p

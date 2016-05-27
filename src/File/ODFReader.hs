@@ -1,22 +1,21 @@
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE
+    NamedFieldPuns
+  , OverloadedStrings
+  #-}
 
 module File.ODFReader
-       ( parseDiscODF
-       ) where
+  ( parseDiscODF
+  , getPos
+  , getLinPos
+  ) where
 
 import qualified Data.Vector as V
 
-import Control.Monad       (liftM)
-import Data.Vector         (Vector, (!))
+import Data.Vector         (Vector)
 import Control.Applicative ((<|>))
 import Data.ByteString     (ByteString)
 
-import Data.Char
 import Data.Attoparsec.ByteString.Char8
-
-import Texture.Orientation
 
 data DiscODF =
   DiscODF
@@ -30,17 +29,6 @@ data DiscODF =
   , odf   :: Vector Double
   } deriving (Show)
 
-getODFIntensity :: DiscODF -> Euler -> Double
-getODFIntensity df@DiscODF{..} q
-  | iPHI1 >= 0 && iPHI1 <= nPHI1 &&
-    iPHI  >= 0 && iPHI  <= nPHI  &&
-    iPHI2 >= 0 && iPHI2 <= nPHI2 = odf ! (getLinPos df (iPHI1, iPHI, iPHI2))
-  | otherwise = 0.0
-  where
-    iPHI1 = round $ (phi1 q - sPHI1) / step
-    iPHI  = round $ (phi  q - sPHI ) / step
-    iPHI2 = round $ (phi2 q - sPHI2) / step
-
 getLinPos :: DiscODF -> (Int, Int, Int) -> Int
 getLinPos df = getLinPos' (nPHI1 df) (nPHI df)
 
@@ -50,9 +38,8 @@ getLinPos' nPHI1 nPHI (i,j,k) = k * nPHI * nPHI1 + j * nPHI1 + i
 getPos :: DiscODF -> Int -> (Int, Int, Int)
 getPos df n = (i,j,k)
   where
-    (k,rk) = quotRem n $ (nPHI1 df)*(nPHI df)
-    (j, i) = quotRem rk (nPHI1 df)
-
+    (k, rk) = quotRem n $ (nPHI1 df) * (nPHI df)
+    (j,  i) = quotRem rk (nPHI1 df)
 
 -- | Parse just one input file. Rise an error mesage in case of error.
 parseDiscODF :: ByteString -> DiscODF
@@ -63,7 +50,7 @@ parseDiscODF odf =
 
 parseAll :: Parser DiscODF
 parseAll = do
-  _     <- do { x <- manyTill anyChar endOfLine; return x }
+  _     <- manyTill anyChar endOfLine
   step  <- func "Distance between grid points"
   nPHI1 <- func "Number of PHI1-values"
   sPHI1 <- func "First value of PHI1"
@@ -72,12 +59,12 @@ parseAll = do
   nPHI2 <- func "Number of PHI-values"
   sPHI2 <- func "First value of PHI"
   grid  <- gridParse nPHI1 nPHI nPHI2
-  return $ DiscODF { step, nPHI1, nPHI, nPHI2, sPHI1, sPHI, sPHI2, odf = grid }
+  return DiscODF { step, nPHI1, nPHI, nPHI2, sPHI1, sPHI, sPHI2, odf = grid }
   where func s = do { x <- parseNum; skipSpace >> string s >> endOfLine; return x }
 
 gridParse :: Int -> Int -> Int -> Parser (Vector Double)
 gridParse nPHI1 nPHI nPHI2 = do
-  grid <- liftM V.fromList $ many1 parseNum
+  grid <- V.fromList <$> many1 parseNum
   if V.length ls == V.length grid
     then return $ newArr grid
     else error $ "[ODFReader] Unexpected number of points: " ++ show ( V.length ls, V.length grid)

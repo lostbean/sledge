@@ -1,43 +1,45 @@
-{-# LANGUAGE RecordWildCards #-}
-
+{-# LANGUAGE
+    FlexibleInstances
+  , TypeSynonymInstances
+  , RecordWildCards
+  #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Texture.DDF
-       ( DDF ( ddfIntensity
-             , ddfGrid
-             , ddfGridSize
-             , ddfGridStep
-             , ddfTree
-             , ddfSymm
-             , ddfKernelWidth
-             )
-       , buildEmptyDDF
-       , resetDDF
-       , addPoints
-       , getDDFeval
-       , renderDDFVTK
-       ) where
+  ( DDF ( ddfIntensity
+        , ddfGrid
+        , ddfGridSize
+        , ddfGridStep
+        , ddfTree
+        , ddfSymm
+        , ddfKernelWidth
+        )
+  , buildEmptyDDF
+  , resetDDF
+  , addPoints
+  , getDDFeval
+  , renderDDFVTK
+  ) where
 
-import qualified Data.Vector.Unboxed as U
-
-import Hammer.Math.Algebra
+import Linear.Vect
 import Hammer.VTK
-
 import qualified Data.BlazeVPtree as VP
+import qualified Data.Vector.Unboxed as U
 
 import Texture.Orientation
 import Texture.Symmetry
 import Texture.IsoSphere
 import Texture.Kernel
 
-instance VP.Metric Normal3 where
+instance VP.Metric Normal3D where
   dist v1 v2 = acosSafe (v1 &. v2)
 
 data DDF
   = DDF
   { ddfIntensity   :: U.Vector Double
-  , ddfGrid        :: U.Vector Normal3
+  , ddfGrid        :: U.Vector Normal3D
   , ddfGridSize    :: Int
   , ddfGridStep    :: Rad
-  , ddfTree        :: VP.VPtree Normal3
+  , ddfTree        :: VP.VPtree Normal3D
   , ddfSymm        :: Symm
   , ddfKernelWidth :: Rad
   } deriving (Show)
@@ -62,18 +64,18 @@ buildEmptyDDF kw symm step
 resetDDF :: DDF -> DDF
 resetDDF ddf = ddf { ddfIntensity = U.replicate (ddfGridSize ddf) 0}
 
-addPoints :: U.Vector Normal3 -> DDF -> DDF
+addPoints :: U.Vector Normal3D -> DDF -> DDF
 addPoints qs ddf@DDF{..} = ddf { ddfIntensity = is }
   where is = addManyKernels ddfKernelWidth ddfTree qs ddfIntensity
 
-getDDFeval :: DDF -> (Normal3 -> Double)
-getDDFeval DDF{..} = maybe 0 (\((i,_,_)) -> ddfIntensity U.! i) . func
+getDDFeval :: DDF -> (Normal3D -> Double)
+getDDFeval DDF{..} = maybe 0 (\(i,_,_) -> ddfIntensity U.! i) . func
   where
     step = fromAngle ddfGridStep
     func = VP.nearestThanNeighbor ddfTree step
 
 -- | Render DDF
-renderDDFVTK :: DDF -> VTK Normal3
+renderDDFVTK :: DDF -> VTK Normal3D
 renderDDFVTK DDF{..} = let
   attr = mkPointValueAttr "Intensity" (\i _ -> ddfIntensity U.! i)
   in mkUGVTK "DDF" ddfGrid (U.generate ddfGridSize id) [attr] []

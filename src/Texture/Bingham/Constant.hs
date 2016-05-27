@@ -1,8 +1,7 @@
-{-# LANGUAGE NamedFieldPuns             #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE BangPatterns               #-}
-{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE
+    NamedFieldPuns
+  , FlexibleInstances
+  #-}
 
 {- |
 Solves the multivariate confluent hypergeometric function for
@@ -11,22 +10,17 @@ two variable case is one of the Humbert series.
 -}
 
 module Texture.Bingham.Constant
-       ( computeF
-       , computedFdz1
-       , computedFdz2
-       , computedFdz3
-       , computedFdz4
-       , computeAllF
-       , surface_area_sphere
-       ) where
+  ( computeF
+  , computedFdz1
+  , computedFdz2
+  , computedFdz3
+  , computedFdz4
+  , computeAllF
+  , surface_area_sphere
+  ) where
 
+import Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as U
-
-import Data.Vector.Unboxed          (Vector)
-import Data.Word
-
--- import Debug.Trace
--- dbg s x = trace (s L.++ show x) x
 
 -- | Computation of normalization constant from the concentration values of a Bingham
 -- distribution in 4 dimensions using saddle point approximations (Kume and Wood, 2005).
@@ -81,7 +75,7 @@ surface_area_sphere d
 -- ========================== Saddle point approximation =================================
 
 factTable :: Vector Double
-factTable = U.scanl' (\acc i -> acc * i) 1 (U.enumFromN 1 10000)
+factTable = U.scanl' (*) 1 (U.enumFromN 1 10000)
 
 fact :: Int -> Double
 fact = (factTable U.!)
@@ -106,7 +100,7 @@ dKdt :: Int -> Vector Double -> Double -> Double
 dKdt j cs t = let
   n = U.length cs
   func i = fact (j - 1) / (cs U.! i - t)^j
-  in 0.5 * (U.sum $ U.generate n func)
+  in 0.5 * U.sum (U.generate n func)
 
 findRoot :: Vector Double -> Double
 findRoot cs = go (lmin + delta)

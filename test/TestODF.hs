@@ -2,7 +2,7 @@ module Main where
 
 import qualified Data.Vector.Unboxed as U
 
-import Hammer.Math.Algebra
+import Linear.Vect
 import Hammer.VTK
 
 import Texture.Orientation

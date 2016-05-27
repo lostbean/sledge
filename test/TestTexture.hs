@@ -14,7 +14,7 @@ import Test.Tasty.HUnit      as HU
 import Test.Tasty.QuickCheck as QC
 
 import qualified Data.Vector as V
-import Hammer.Math.Algebra
+import Linear.Vect
 import Texture.Orientation
 import Texture.Symmetry
 

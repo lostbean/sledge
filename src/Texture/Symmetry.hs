@@ -1,14 +1,14 @@
-{-# LANGUAGE NamedFieldPuns             #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-
+{-# LANGUAGE
+    NamedFieldPuns
+  , RecordWildCards
+  , GeneralizedNewtypeDeriving
+  , TypeFamilies
+  , MultiParamTypeClasses
+  , TemplateHaskell
+  #-}
 -- |
 -- Module      : Texture.Symmetry
 -- Copyright   : (c) 2013 Edgar Gomes
--- License     : Privete-style (see LICENSE)
---
 -- Maintainer  : Edgar Gomes <talktoedgar@gmail.com>
 -- Stability   : experimental
 -- Portability : tested on GHC only
@@ -16,56 +16,49 @@
 -- Module to calculate symmetry in crystal orientations.
 --
 module Texture.Symmetry
-       ( Symm (..)
-       , toFZ
-       , toFZGeneric
-       , toFZDirect
-       , getInFZ
-       , isInFZ
-       , getMinDistFZPlanes
-          -- * Vector operations
-       , getAllSymmVec
-       , getUniqueSymmVecs
-         -- * Misorientation
-       , getMisoAngle
-         -- * Fundamental zone in Frank-Rodrigues
-       , isInRodriFZ
-        -- * Custom symmetries
-       , getSymmOps
-       , SymmOp
-       , symmOp
-       , mkSymmOps
-       , SymmAxis
-       , mkSymmAxis
-       ) where
+  ( Symm (..)
+  , toFZ
+  , toFZGeneric
+  , toFZDirect
+  , getInFZ
+  , isInFZ
+  , getMinDistFZPlanes
+     -- * Vector operations
+  , getAllSymmVec
+  , getUniqueSymmVecs
+    -- * Misorientation
+  , getMisoAngle
+    -- * Fundamental zone in Frank-Rodrigues
+  , isInRodriFZ
+   -- * Custom symmetries
+  , getSymmOps
+  , SymmOp
+  , symmOp
+  , mkSymmOps
+  , SymmAxis
+  , mkSymmAxis
+  ) where
 
-import qualified Data.Vector                 as V
-import qualified Data.Vector.Unboxed         as U
-import qualified Data.Vector.Generic.Base    as G
-import qualified Data.Vector.Generic.Mutable as M
+import Control.DeepSeq
+import Data.Vector.Unboxed.Deriving
+import Data.Function (on)
+import Data.Maybe (isNothing)
+import Linear.Vect
+import qualified Data.Vector         as V
+import qualified Data.Vector.Unboxed as U
 
-import           Control.Monad               (liftM)
-import           Data.Vector                 (Vector)
-import           Data.Function               (on)
-
-import           Control.DeepSeq
-
-import           Hammer.Math.Algebra
-import           Texture.Orientation
-
---import           Debug.Trace
---dbg s x = trace (s ++ show x) x
+import Texture.Orientation
 
 -- =======================================================================================
 
 -- | Defines the an axis of symmetry given an axis 'Vec3' and the number of folds.
 newtype SymmAxis
-  = SymmAxis (Vec3, Int)
+  = SymmAxis (Vec3D, Int)
   deriving (Eq, Show)
 
 -- | Defines a fundamental zone plane in Frank-Rodrigues space
 newtype FZPlane
-  = FZPlane  (Normal3, Double)
+  = FZPlane  (Normal3D, Double)
   deriving (Eq, Show)
 
 -- | Defines the symmetric group of a certain material.
@@ -81,7 +74,7 @@ newtype SymmOp =
   } deriving (Eq, Show, NFData)
 
 -- | Creates a symmetric axis.
-mkSymmAxis :: Vec3 -> Int -> SymmAxis
+mkSymmAxis :: Vec3D -> Int -> SymmAxis
 mkSymmAxis v i = SymmAxis (v, i)
 
 -- | Generates a vector of symmetric operators for a given symmetry group.
@@ -180,16 +173,17 @@ toFZDirect symmOps x = let
 
 -- | Calculates all the symmetric equivalents of a given vector. The calculation is done
 -- by passive rotations (changes of base)
-getAllSymmVec :: U.Vector SymmOp -> Vec3 -> U.Vector Vec3
+getAllSymmVec :: U.Vector SymmOp -> Vec3D -> U.Vector Vec3D
 getAllSymmVec symOps = \vec -> U.map (passiveVecRotation vec . symmOp) symOps
 
 -- | Calculates all the /unique/ (non-repeated) symmetric equivalents of a given vector.
 -- The calculation is done by filtering the output of 'getAllSymmVec'.
-getUniqueSymmVecs :: U.Vector SymmOp -> Vec3 -> U.Vector Vec3
+getUniqueSymmVecs :: U.Vector SymmOp -> Vec3D -> U.Vector Vec3D
 getUniqueSymmVecs symOps = nubVec . getAllSymmVec symOps
 
+-- TODO: Is there a better complexity for this size?
 -- | Get a list of /unique/ vectors by filtering the repeated ones.
-nubVec :: (U.Unbox a, DotProd a)=> U.Vector a -> U.Vector a
+nubVec :: (Fractional a, Ord a, U.Unbox (v a), DotProd a v)=> U.Vector (v a) -> U.Vector (v a)
 nubVec l = let
   func (acc, v)
     | U.null v  = acc
@@ -210,7 +204,7 @@ isInFZ symm = \q -> let
   -- test if at least one of the symmetric equivalents has
   -- rotation angle smaller than the input orientation. Therefore the
   -- number of calculations varies between 1 and the number of symmetric operators
-  in maybe True (const False) (U.find ((> w) . abs . composeQ0 q . symmOp) os)
+  in isNothing $ U.find ((> w) . abs . composeQ0 q . symmOp) os
   where os = getSymmOps symm
 
 -- =======================================================================================
@@ -221,7 +215,7 @@ getMinDistFZPlanes :: Symm -> Double
 getMinDistFZPlanes symm
   | U.null as = pi
   | n <= 0    = pi
-  | otherwise = pi / (fromIntegral n)
+  | otherwise = pi / fromIntegral n
   where
     as = getSymmAxes symm
     SymmAxis (_, n) = U.maximumBy (compare `on` (\(SymmAxis (_, x)) -> x)) as
@@ -235,7 +229,7 @@ mkFZPlane :: SymmAxis -> FZPlane
 mkFZPlane (SymmAxis (dir, n)) = FZPlane (normal, dist)
   where
     normal = mkNormal dir
-    dist   = abs $ tan (pi / (2 * (fromIntegral n)))
+    dist   = abs . tan $ pi / (2 * fromIntegral n)
 
 -- | Determine whether or not a given quaternion is in the fundamental zone by using
 -- Rodrigues-Frank space and its symmetry planes. It should be faster than using all
@@ -244,7 +238,7 @@ isInRodriFZ :: Symm -> Quaternion -> Bool
 isInRodriFZ symm = \q -> let
   rq = rodriVec $ fromQuaternion q
   -- test until find the orientation is not inside
-  in maybe True (const False) (U.find (not . isInsideRFplane rq) planes)
+  in isNothing $ U.find (not . isInsideRFplane rq) planes
   where
     -- memorizing planes (eta expression)
     planes = getFZPlanes symm
@@ -285,143 +279,17 @@ getMisoAngle symm = let
 
 -- -------------------------------------------- Unbox SymmOp ----------------------------------------------------
 
-newtype instance U.MVector s SymmOp = MV_SymmOp (U.MVector s Quaternion)
-newtype instance U.Vector    SymmOp = V_SymmOp  (U.Vector    Quaternion)
+derivingUnbox "SymmOp"
+    [t| SymmOp -> Quaternion |]
+    [| \(SymmOp q) -> q |]
+    [| \q -> SymmOp q |]
 
-instance U.Unbox SymmOp
+derivingUnbox "SymmAxis"
+    [t| SymmAxis -> (Vec3D, Int) |]
+    [| \(SymmAxis a) -> a |]
+    [| \a -> SymmAxis a |]
 
-instance M.MVector U.MVector SymmOp where
-  {-# INLINE basicLength #-}
-  {-# INLINE basicUnsafeSlice #-}
-  {-# INLINE basicOverlaps #-}
-  {-# INLINE basicUnsafeNew #-}
-  {-# INLINE basicUnsafeReplicate #-}
-  {-# INLINE basicUnsafeRead #-}
-  {-# INLINE basicUnsafeWrite #-}
-  {-# INLINE basicClear #-}
-  {-# INLINE basicSet #-}
-  {-# INLINE basicUnsafeCopy #-}
-  {-# INLINE basicUnsafeGrow #-}
-  basicLength (MV_SymmOp v)                     = M.basicLength v
-  basicUnsafeSlice i n (MV_SymmOp v)            = MV_SymmOp $ M.basicUnsafeSlice i n v
-  basicOverlaps (MV_SymmOp v1) (MV_SymmOp v2)   = M.basicOverlaps v1 v2
-  basicInitialize (MV_SymmOp v)                 = M.basicInitialize v
-  basicUnsafeNew n                              = MV_SymmOp `liftM` M.basicUnsafeNew n
-  basicUnsafeReplicate n (SymmOp x)             = MV_SymmOp `liftM` M.basicUnsafeReplicate n x
-  basicUnsafeRead (MV_SymmOp v) i               = M.basicUnsafeRead v i >>= (return . SymmOp)
-  basicUnsafeWrite (MV_SymmOp v) i (SymmOp x)   = M.basicUnsafeWrite v i x
-  basicClear (MV_SymmOp v)                      = M.basicClear v
-  basicSet (MV_SymmOp v) (SymmOp x)             = M.basicSet v x
-  basicUnsafeCopy (MV_SymmOp v1) (MV_SymmOp v2) = M.basicUnsafeCopy v1 v2
-  basicUnsafeGrow (MV_SymmOp v) n               = MV_SymmOp `liftM` M.basicUnsafeGrow v n
-
-instance G.Vector U.Vector SymmOp where
-  {-# INLINE basicUnsafeFreeze #-}
-  {-# INLINE basicUnsafeThaw #-}
-  {-# INLINE basicLength #-}
-  {-# INLINE basicUnsafeSlice #-}
-  {-# INLINE basicUnsafeIndexM #-}
-  {-# INLINE elemseq #-}
-  basicUnsafeFreeze (MV_SymmOp v)             = V_SymmOp `liftM` G.basicUnsafeFreeze v
-  basicUnsafeThaw (V_SymmOp v)                = MV_SymmOp `liftM` G.basicUnsafeThaw v
-  basicLength (V_SymmOp v)                    = G.basicLength v
-  basicUnsafeSlice i n (V_SymmOp v)           = V_SymmOp $ G.basicUnsafeSlice i n v
-  basicUnsafeIndexM (V_SymmOp v) i            = G.basicUnsafeIndexM v i >>= (return . SymmOp)
-  basicUnsafeCopy (MV_SymmOp mv) (V_SymmOp v) = G.basicUnsafeCopy mv v
-  elemseq _ (SymmOp x) t                      = G.elemseq (undefined :: Vector a) x t
-
--- -------------------------------------------- Unbox SymmAxis ----------------------------------------------------
-
-newtype instance U.MVector s SymmAxis = MV_SymmAxis (U.MVector s (Vec3, Int))
-newtype instance U.Vector    SymmAxis = V_SymmAxis  (U.Vector    (Vec3, Int))
-
-instance U.Unbox SymmAxis
-
-instance M.MVector U.MVector SymmAxis where
-  {-# INLINE basicLength #-}
-  {-# INLINE basicUnsafeSlice #-}
-  {-# INLINE basicOverlaps #-}
-  {-# INLINE basicUnsafeNew #-}
-  {-# INLINE basicUnsafeReplicate #-}
-  {-# INLINE basicUnsafeRead #-}
-  {-# INLINE basicUnsafeWrite #-}
-  {-# INLINE basicClear #-}
-  {-# INLINE basicSet #-}
-  {-# INLINE basicUnsafeCopy #-}
-  {-# INLINE basicUnsafeGrow #-}
-  basicLength (MV_SymmAxis v)                         = M.basicLength v
-  basicUnsafeSlice i n (MV_SymmAxis v)                = MV_SymmAxis $ M.basicUnsafeSlice i n v
-  basicOverlaps (MV_SymmAxis v1) (MV_SymmAxis v2)     = M.basicOverlaps v1 v2
-  basicInitialize (MV_SymmAxis v)                     = M.basicInitialize v
-  basicUnsafeNew n                                    = MV_SymmAxis `liftM` M.basicUnsafeNew n
-  basicUnsafeReplicate n (SymmAxis (x,y))             = MV_SymmAxis `liftM` M.basicUnsafeReplicate n (x, y)
-  basicUnsafeRead (MV_SymmAxis v) i                   = M.basicUnsafeRead v i >>= (\(x, y) -> return $ SymmAxis (x,y))
-  basicUnsafeWrite (MV_SymmAxis v) i (SymmAxis (x,y)) = M.basicUnsafeWrite v i (x, y)
-  basicClear (MV_SymmAxis v)                          = M.basicClear v
-  basicSet (MV_SymmAxis v) (SymmAxis (x,y))           = M.basicSet v (x, y)
-  basicUnsafeCopy (MV_SymmAxis v1) (MV_SymmAxis v2)   = M.basicUnsafeCopy v1 v2
-  basicUnsafeGrow (MV_SymmAxis v) n                   = MV_SymmAxis `liftM` M.basicUnsafeGrow v n
-
-instance G.Vector U.Vector SymmAxis where
-  {-# INLINE basicUnsafeFreeze #-}
-  {-# INLINE basicUnsafeThaw #-}
-  {-# INLINE basicLength #-}
-  {-# INLINE basicUnsafeSlice #-}
-  {-# INLINE basicUnsafeIndexM #-}
-  {-# INLINE elemseq #-}
-  basicUnsafeFreeze (MV_SymmAxis v)               = V_SymmAxis `liftM` G.basicUnsafeFreeze v
-  basicUnsafeThaw (V_SymmAxis v)                  = MV_SymmAxis `liftM` G.basicUnsafeThaw v
-  basicLength (V_SymmAxis v)                      = G.basicLength v
-  basicUnsafeSlice i n (V_SymmAxis v)             = V_SymmAxis $ G.basicUnsafeSlice i n v
-  basicUnsafeIndexM (V_SymmAxis v) i              = G.basicUnsafeIndexM v i >>= (\(x, y) -> return $ SymmAxis (x,y))
-  basicUnsafeCopy (MV_SymmAxis mv) (V_SymmAxis v) = G.basicUnsafeCopy mv v
-  elemseq _ (SymmAxis (x,y)) t                    = G.elemseq (undefined :: Vector a) x $
-                                                    G.elemseq (undefined :: Vector a) y t
-
--- -------------------------------------------- Unbox FZPlane ----------------------------------------------------
-
-newtype instance U.MVector s FZPlane = MV_FZPlane (U.MVector s (Normal3, Double))
-newtype instance U.Vector    FZPlane = V_FZPlane  (U.Vector    (Normal3, Double))
-
-instance U.Unbox FZPlane
-
-instance M.MVector U.MVector FZPlane where
-  {-# INLINE basicLength #-}
-  {-# INLINE basicUnsafeSlice #-}
-  {-# INLINE basicOverlaps #-}
-  {-# INLINE basicUnsafeNew #-}
-  {-# INLINE basicUnsafeReplicate #-}
-  {-# INLINE basicUnsafeRead #-}
-  {-# INLINE basicUnsafeWrite #-}
-  {-# INLINE basicClear #-}
-  {-# INLINE basicSet #-}
-  {-# INLINE basicUnsafeCopy #-}
-  {-# INLINE basicUnsafeGrow #-}
-  basicLength (MV_FZPlane v)                        = M.basicLength v
-  basicUnsafeSlice i n (MV_FZPlane v)               = MV_FZPlane $ M.basicUnsafeSlice i n v
-  basicOverlaps (MV_FZPlane v1) (MV_FZPlane v2)     = M.basicOverlaps v1 v2
-  basicInitialize (MV_FZPlane v)                    = M.basicInitialize v
-  basicUnsafeNew n                                  = MV_FZPlane `liftM` M.basicUnsafeNew n
-  basicUnsafeReplicate n (FZPlane (x,y))            = MV_FZPlane `liftM` M.basicUnsafeReplicate n (x, y)
-  basicUnsafeRead (MV_FZPlane v) i                  = M.basicUnsafeRead v i >>= (\(x, y) -> return $ FZPlane (x,y))
-  basicUnsafeWrite (MV_FZPlane v) i (FZPlane (x,y)) = M.basicUnsafeWrite v i (x, y)
-  basicClear (MV_FZPlane v)                         = M.basicClear v
-  basicSet (MV_FZPlane v) (FZPlane (x,y))           = M.basicSet v (x, y)
-  basicUnsafeCopy (MV_FZPlane v1) (MV_FZPlane v2)   = M.basicUnsafeCopy v1 v2
-  basicUnsafeGrow (MV_FZPlane v) n                  = MV_FZPlane `liftM` M.basicUnsafeGrow v n
-
-instance G.Vector U.Vector FZPlane where
-  {-# INLINE basicUnsafeFreeze #-}
-  {-# INLINE basicUnsafeThaw #-}
-  {-# INLINE basicLength #-}
-  {-# INLINE basicUnsafeSlice #-}
-  {-# INLINE basicUnsafeIndexM #-}
-  {-# INLINE elemseq #-}
-  basicUnsafeFreeze (MV_FZPlane v)              = V_FZPlane `liftM` G.basicUnsafeFreeze v
-  basicUnsafeThaw (V_FZPlane v)                 = MV_FZPlane `liftM` G.basicUnsafeThaw v
-  basicLength (V_FZPlane v)                     = G.basicLength v
-  basicUnsafeSlice i n (V_FZPlane v)            = V_FZPlane $ G.basicUnsafeSlice i n v
-  basicUnsafeIndexM (V_FZPlane v) i             = G.basicUnsafeIndexM v i >>= (\(x, y) -> return $ FZPlane (x,y))
-  basicUnsafeCopy (MV_FZPlane mv) (V_FZPlane v) = G.basicUnsafeCopy mv v
-  elemseq _ (FZPlane (x,y)) t                   = G.elemseq (undefined :: Vector a) x $
-                                                  G.elemseq (undefined :: Vector a) y t
+derivingUnbox "FZPlane"
+    [t| FZPlane -> (Normal3D, Double) |]
+    [| \(FZPlane a) -> a |]
+    [| \a -> FZPlane a |]

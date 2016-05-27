@@ -1,31 +1,30 @@
-{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE OverloadedStrings #-}
-
+{-# LANGUAGE
+    RecordWildCards
+  , OverloadedStrings
+  #-}
 -- | Read and load *.ctf files from CTF measure systems.
 module File.CTFReader
-       ( parseCTF
-       , ctfToVoxBox
-       , CTFpoint (..)
-       , CTFinfo  (..)
-       , CTFphase (..)
-       , CTFgrid  (..)
-       , CTFdata  (..)
-       ) where
+  ( parseCTF
+  , ctfToVoxBox
+  , CTFpoint (..)
+  , CTFinfo  (..)
+  , CTFphase (..)
+  , CTFgrid  (..)
+  , CTFdata  (..)
+  ) where
 
-import           Control.Applicative ((<|>), (<$>), pure)
-import           Data.Attoparsec.ByteString.Char8
-import           Data.Vector (Vector)
+import Control.Applicative ((<|>))
+import Data.Attoparsec.ByteString.Char8
+import Data.Vector (Vector)
+import Hammer.VoxBox
 import qualified Data.Attoparsec.ByteString.Char8 as AC
 import qualified Data.ByteString                  as B
 import qualified Data.ByteString.Char8            as BC
 import qualified Data.Vector                      as V
 import qualified Data.Vector.Unboxed              as U
 
-import           Hammer.VoxBox
-
-import           Texture.Orientation (Quaternion, toQuaternion, mkEuler, Deg(..))
-import           File.InternalParsers
+import Texture.Orientation (Quaternion, toQuaternion, mkEuler, Deg(..))
+import File.InternalParsers
 
 -- ============================== CTF manipulation =======================================
 
@@ -115,7 +114,7 @@ parseCTF fileName = do
 
 parseCTFdata :: Parser CTFdata
 parseCTFdata = do
-  stringInfo "Channel Text File"
+  _ <- stringInfo "Channel Text File"
   _proj   <- getInfo "Prj"      parseText
   _auth   <- getInfo "Author"   parseText
   _job    <- getInfo "JobMode"  parseText
@@ -171,15 +170,15 @@ latticeParse = parser <?> "Failed to parse lattice parameters"
   where
     parser = do
       a  <- parseFloat
-      stringInfo ";"
+      _  <- stringInfo ";"
       b  <- parseFloat
-      stringInfo ";"
+      _  <- stringInfo ";"
       c  <- parseFloat
       blanks
       w1 <- parseFloat
-      stringInfo ";"
+      _  <- stringInfo ";"
       w2 <- parseFloat
-      stringInfo ";"
+      _  <- stringInfo ";"
       w3 <- parseFloat
       eol
       return (a, b, c, w1, w2, w3)

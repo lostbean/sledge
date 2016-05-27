@@ -1,30 +1,28 @@
-{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE OverloadedStrings #-}
-
+{-# LANGUAGE
+    RecordWildCards
+  , OverloadedStrings
+  #-}
 -- | Read and load *.ang files from ANG measure systems.
 module File.ANGReader
-       ( parseANG
-       , angToVoxBox
-       , ANGpoint (..)
-       , ANGinfo  (..)
-       , ANGphase (..)
-       , ANGgrid  (..)
-       , ANGdata  (..)
-       ) where
+  ( parseANG
+  , angToVoxBox
+  , ANGpoint (..)
+  , ANGinfo  (..)
+  , ANGphase (..)
+  , ANGgrid  (..)
+  , ANGdata  (..)
+  ) where
 
-import           Control.Applicative ((<|>), pure)
-import           Data.Attoparsec.ByteString.Char8
-import           Data.Maybe (catMaybes)
-import           Data.Vector (Vector)
-import qualified Data.ByteString                  as B
-import qualified Data.Vector                      as V
-import qualified Data.Vector.Unboxed              as U
+import Control.Applicative ((<|>))
+import Data.Attoparsec.ByteString.Char8
+import Data.Vector (Vector)
+import Hammer.VoxBox
+import qualified Data.ByteString     as B
+import qualified Data.Vector         as V
+import qualified Data.Vector.Unboxed as U
 
-import           Hammer.VoxBox
-
-import           File.InternalParsers
-import           Texture.Orientation (Quaternion, toQuaternion, mkEuler, Rad(..))
+import File.InternalParsers
+import Texture.Orientation (Quaternion, toQuaternion, mkEuler, Rad(..))
 
 -- ============================== ANG manipulation =======================================
 
@@ -158,7 +156,7 @@ checkDataSize ANGdata{..}
 -- ------------------------------------ SubParsers ---------------------------------------
 
 phasesParse :: Parser [ANGphase]
-phasesParse = (many1 (skipCommentLine >> phaseParse)) <?> "Couldn't parser not a sinlge phase information"
+phasesParse = many1 (skipCommentLine >> phaseParse) <?> "Couldn't parser not a sinlge phase information"
 
 phaseParse :: Parser ANGphase
 phaseParse = parser <?> "Failed to parse phase info"
@@ -201,7 +199,7 @@ elasticParse :: Parser (Double, Double, Double, Double, Double, Double)
 elasticParse = parser <?> "Failed to parse elastic constants"
   where
     parser = do
-      stringInfo "# ElasticConstants"
+      _  <- stringInfo "# ElasticConstants"
       i1 <- parseFloat
       i2 <- parseFloat
       i3 <- parseFloat
@@ -215,7 +213,7 @@ latticeParse :: Parser (Double, Double, Double, Double, Double, Double)
 latticeParse = parser <?> "Failed to parse lattice parameters"
   where
     parser = do
-      stringInfo "# LatticeConstants"
+      _  <- stringInfo "# LatticeConstants"
       a  <- parseFloat
       b  <- parseFloat
       c  <- parseFloat
@@ -229,7 +227,7 @@ hklParse :: Parser (Int, Int, Int, Int, Double, Int)
 hklParse = parser <?> "Failed to parser HKL family"
   where
     parser = do
-      stringInfo "# hklFamilies"
+      _ <- stringInfo "# hklFamilies"
       h <- parseInt
       k <- parseInt
       l <- parseInt
@@ -243,7 +241,7 @@ categoryParse :: Parser (Int,Int,Int,Int,Int)
 categoryParse = parser <?> "Failed to parser category"
   where
     parser = do
-      stringInfo "# Categories"
+      _ <- stringInfo "# Categories"
       a <- parseInt
       b <- parseInt
       c <- parseInt
@@ -283,10 +281,10 @@ getGridPoint g (x, y) = let
   xi = round ((2*x)/xstep) `div` 2
   in (xi, yi)
 
--- -------------------------------------- Basic parsers ----------------------------------
+-- -------------------------------------- Basic parses ----------------------------------
 
 skipCommentLine :: Parser ()
 skipCommentLine = getInfo "#" skipRestOfTheLine
 
 gridType :: Parser Bool
-gridType = blanks >> (getInfo "HexGrid" (pure True)) <|> (getInfo "SqrGrid" (pure False))
+gridType = blanks >> getInfo "HexGrid" (pure True) <|> getInfo "SqrGrid" (pure False)

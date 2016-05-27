@@ -9,7 +9,7 @@ import Test.Tasty.HUnit
 import qualified Data.Vector.Unboxed as U
 import qualified Data.List           as L
 
-import Hammer.Math.Algebra
+import Linear.Vect
 import Texture.Orientation
 import Texture.Symmetry
 import Texture.TesseractGrid

@@ -1,7 +1,7 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE NamedFieldPuns             #-}
-{-# LANGUAGE RecordWildCards            #-}
-
+{-# LANGUAGE
+    NamedFieldPuns
+  , RecordWildCards
+  #-}
 -- |
 -- Module      : Texture.IPF
 -- Copyright   : (c) 2013 Edgar Gomes
@@ -31,29 +31,24 @@
 -- (e.g. @red = alphaBR/alphaRG@ and @blue = alphaGB/alphaRG@).
 --
 module Texture.IPF
-       ( invPole
-       , getIPFColor
-       , genIPFLegend
-       , getRGBColor
-       , RGBColor       (..)
-       , RGBDoubleColor (..)
-       ) where
+ ( invPole
+ , getIPFColor
+ , genIPFLegend
+ , getRGBColor
+ , RGBColor       (..)
+ , RGBDoubleColor (..)
+ ) where
 
+import Data.Word           (Word8)
+import Data.Vector.Unboxed (Vector)
+import Linear.Vect
+import System.Random
 import qualified Data.Vector.Unboxed as U
 import qualified Data.Vector         as V
 
-import           Data.Word           (Word8)
-import           Data.Vector.Unboxed (Vector)
-
-import           System.Random
-
-import           Hammer.Math.Algebra
-import           Texture.Orientation
-import           Texture.SphereProjection
-import           Texture.Symmetry
-
---import           Debug.Trace
---dbg s x = trace (s ++ show x) x
+import Texture.Orientation
+import Texture.SphereProjection
+import Texture.Symmetry
 
 -- =======================================================================================
 
@@ -70,16 +65,16 @@ newtype AngularDist = AngularDist (Double, Double, Double)
 -- the planes, @planeRG@, is defined by @planeRG = vG x vR@.
 data IPFBase =
   IPFBase
-  { planeRG :: Normal3
-  , planeGB :: Normal3
-  , planeBR :: Normal3
+  { planeRG :: Normal3D
+  , planeGB :: Normal3D
+  , planeBR :: Normal3D
   } deriving (Show)
 
 -- | Calculates a 'IPFSchema' for a given symmetry group and three reference directions
 -- associated with the colors in the following sequence: @Red -> Green -> Blue@. In order
 -- to find the right fundamental zone, the set of reference directions have to be adjusted
 -- by choosing right members of the direction's family (e.g. <0 1 0> from {1 1 0} family)
-mkIPFSchema :: Vec3 -> Vec3 -> Vec3 -> IPFBase
+mkIPFSchema :: Vec3D -> Vec3D -> Vec3D -> IPFBase
 mkIPFSchema vecR vecG vecB = let
   normalRG = mkNormal $ vecG &^ vecR
   normalGB = mkNormal $ vecB &^ vecG
@@ -95,11 +90,11 @@ getIPFSchema symm = case symm of
 
 -- | Calculate the inverse poles of given orientation. The inverse pole is the
 -- crystalographic direction parallel to one of the external frame directions.
-invPole :: RefFrame -> Quaternion -> Normal3
+invPole :: RefFrame -> Quaternion -> Normal3D
 invPole refdir = mkNormal . case refdir of
-  RD -> _1 . m
-  TD -> _2 . m
-  ND -> _3 . m
+  RD -> _R1 . m
+  TD -> _R2 . m
+  ND -> _R3 . m
   where
     -- The columns of the orientation matrix are the directions parallel to RD, TD, and ND
     -- (m = [RD, TD, ND]) and the rows represent the directions of the rotated frame (
@@ -126,7 +121,7 @@ ipfColor (AngularDist (angleB, angleR, angleG))
 
 -- | Calculates the IPF color in one reference frame directions for a given orientation
 --  represented in quaternion and its symmetry group.
-getIPFColor :: Symm -> RefFrame -> Quaternion -> (Normal3, RGBDoubleColor)
+getIPFColor :: Symm -> RefFrame -> Quaternion -> (Normal3D, RGBDoubleColor)
 getIPFColor symm ref = let
   foo (fzn, as) = (fzn, colorAdjust $ ipfColor as)
   base          = getIPFSchema symm
@@ -136,7 +131,7 @@ getIPFColor symm ref = let
 -- | Finds the set of angles between a given direction and the planes of an 'IPFBase'. The
 -- returned angles between the direction @v@ and the planes are in radians and in the
 -- following order: @(v <-> plane RG, v <-> plane GB, v <-> plane BR)@
-findAnglesBase :: Normal3 -> IPFBase -> AngularDist
+findAnglesBase :: Normal3D -> IPFBase -> AngularDist
 findAnglesBase v IPFBase{..} = let
   func plane x
     | alpha > 0.5 * pi = alpha - 0.5 * pi
@@ -147,10 +142,10 @@ findAnglesBase v IPFBase{..} = let
 -- | Finds the minimum set of angles between a given direction and all symmetric planes of
 -- 'IPFBase'. The returned angles between the direction @v@ and the planes are in radians
 -- and in the following order: @(v <-> plane RG, v <-> plane GB, v <-> plane BR)@
-findMinAngleBase :: Vector SymmOp -> IPFBase -> Normal3 -> (Normal3, AngularDist)
+findMinAngleBase :: Vector SymmOp -> IPFBase -> Normal3D -> (Normal3D, AngularDist)
 findMinAngleBase symOps base x = let
   symmX  = U.map mkNormal $ getAllSymmVec symOps $ fromNormal x
-  ibase  = U.minIndex $ U.map (angDist . (flip findAnglesBase) base) symmX
+  ibase  = U.minIndex $ U.map (angDist . flip findAnglesBase base) symmX
   finalX = symmX U.! ibase
   alphas = findAnglesBase finalX base
   angDist (AngularDist (a1, a2, a3)) = a1*a1 + a2*a2 + a3*a3

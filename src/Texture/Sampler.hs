@@ -1,19 +1,19 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RecordWildCards  #-}
-
+{-# LANGUAGE
+    FlexibleContexts
+  , FlexibleInstances
+  , RecordWildCards
+  #-}
 module Texture.Sampler
-       ( hitAndRunSlice
-       , HRSCfg (..)
-       , defaultCfg
-       ) where
-
-import System.Random
-
-import Hammer.Math.Algebra
-
-import Texture.Orientation
+  ( hitAndRunSlice
+  , HRSCfg (..)
+  , defaultCfg
+  ) where
 
 import Data.IORef
+import Linear.Vect
+import System.Random
+
+import Texture.Orientation
 
 -- | Function to obtain a linear shoter.
 class HasRandomDir a where
@@ -84,7 +84,7 @@ hitAndRunSlice cfg@HRSCfg{..} p x0 n = do
               else scanline (shrinkrange range k)
 
         -- get initial range with both extremes lying outside and using dynamic range
-        r <- (getInitRange cfg count p shoter u) =<< (readIORef kdyn)
+        r <- getInitRange cfg count p shoter u =<< readIORef kdyn
         --readIORef kdyn >>= putStrLn . ("Kdyn: " ++) . show
         -- get a successful shot
         scanline r
@@ -111,19 +111,19 @@ getInitRange HRSCfg{..} count p shoter y k0 = do
   where
     maxShot = return (-maxShotDist, maxShotDist)
     go step k
-      | (abs k) > maxShotDist = return (maxShotDist * signum k)
-      | p (shoter k) < y      = modifyIORef count (+1) >> return k
-      | otherwise             = modifyIORef count (+1) >> go step (k + step)
+      | abs k > maxShotDist = return (maxShotDist * signum k)
+      | p (shoter k) < y    = modifyIORef count (+1) >> return k
+      | otherwise           = modifyIORef count (+1) >> go step (k + step)
 
 instance HasRandomDir Double where
   linearShoter x0 = do
-    t <- randomRIO (0,1) >>= return . func
+    t <- func <$> randomRIO (0,1)
     return (\k -> x0 + k * t)
     where
       func :: Double -> Double
       func x = if x >= 0.5 then 1 else (-1)
 
-instance HasRandomDir Vec2 where
+instance HasRandomDir (Vec2 Double) where
   linearShoter x0 = do
     t <- sampleOne >>= func
     return (\k -> x0 &+ k *& t)
@@ -141,7 +141,7 @@ instance HasRandomDir Vec2 where
 instance HasRandomDir Quaternion where
   linearShoter x0 = do
     t <- sampleOne >>= func
-    return (\k -> x0 #<= (toQuaternion $ mkAxisPair t (Rad k)))
+    return (\k -> x0 #<= (toQuaternion . mkAxisPair t $ Rad k))
     where
       func v
         | l > 1     = sampleOne >>= func
