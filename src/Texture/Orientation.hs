@@ -490,7 +490,7 @@ composeQ0 p q = let
 
 -- | Find the antipodal (-q) quaternion that represents the same rotation.
 antipodal :: Quaternion -> Quaternion
-antipodal = mkUnsafeQuaternion . neg . quaterVec
+antipodal = Quaternion . neg . quaterVec
 
 -- | Apply a /active/ rotation on vector by quaternion. The vector is rotated around the
 -- quaternion axis.
