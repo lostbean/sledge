@@ -7,6 +7,7 @@ module TestTexture
   ( testTexture
   , testOrientation
   , testAverageQuaternion
+  , testWeightedAverageQuaternion
   ) where
 
 import Control.Applicative
@@ -314,9 +315,27 @@ testAverageQuaternion :: TestTree
 testAverageQuaternion = testGroup "Simple average of two quaternions"
   [ QC.testProperty "averageTwoQuaternion"      (testQAvg (\a b -> averageTwoQuaternion (1, a) (1, b)))
   , QC.testProperty "averageQuaternion"         (testQAvg (\a b -> averageQuaternion [a, b]))
+  , QC.testProperty "averageWeightedQuaternion" (testQAvg (\a b -> averageWeightedQuaternion [(1, a), (1, b)]))
   ]
 
 testQAvg :: (Quaternion -> Quaternion -> Quaternion) -> Quaternion -> Quaternion -> Property
 testQAvg func q1 q2 = let
   avg = func q1 q2
   in binaryTest "same angular dist" (=@=) (omegaDeg avg q1) (omegaDeg avg q2)
+
+-- ================================================================================
+
+testWeightedAverageQuaternion :: TestTree
+testWeightedAverageQuaternion = testGroup "Weighted average of two quaternions"
+  [ QC.testProperty "averageTwoQuaternion"      (testWQAvg averageTwoQuaternion)
+  , QC.testProperty "averageWeightedQuaternion" (testWQAvg (\a b -> averageWeightedQuaternion [a, b]))
+  ]
+
+testWQAvg :: ((Double, Quaternion) -> (Double, Quaternion) -> Quaternion) -> Quaternion -> Quaternion -> Property
+testWQAvg func q1 q2 = let
+  avg1 = func (1,q1) (0,q2)
+  avg2 = func (0,q1) (1,q2)
+  avg3 = func (2,q1) (1,q2)
+  in binaryTest "close to q1"  (=@=) (omegaDeg avg1 q1) (Deg 0) .&&.
+     binaryTest "close to q2"  (=@=) (omegaDeg avg2 q2) (Deg 0) .&&.
+     binaryTest "closer to q1" (<)   (omegaDeg avg3 q1) (omegaDeg avg3 q2)

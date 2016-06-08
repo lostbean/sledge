@@ -73,6 +73,7 @@ module Texture.Orientation
   , passiveVecRotation
     -- * Averaging
   , averageQuaternion
+  , averageWeightedQuaternion
   , averageTwoQuaternion
   , getScatterMatrix
     -- * Other functions
@@ -536,6 +537,18 @@ quaterInterpolation t (Quaternion pa) (Quaternion pb) = mkUnsafeQuaternion v
     s = sin omega
     y  = sin (omega * (1-t)) / s
     yb = sin (omega *    t ) / s
+
+-- | Calculates the average orientation from a distribution.
+-- This is a improved 'bad' example from "Averaging Quaternions", FL Markley, 2007
+averageWeightedQuaternion :: Foldable t => t (Double, Quaternion) -> Quaternion
+averageWeightedQuaternion qs
+  | null qs   = zerorot
+  | otherwise = mkQuaternion . foldl func zero $ qs
+  where
+    -- Doesn't need to check which representation (q or antipodal q) is the closest to
+    -- the accumulator (acc &. q >= 0) because Quaternion enforces the use of half the
+    -- space (only q0 > 0).
+    func acc (w, q) = acc &+ (w *& coerce q)
 
 averageQuaternion :: Foldable t => t Quaternion -> Quaternion
 averageQuaternion qs

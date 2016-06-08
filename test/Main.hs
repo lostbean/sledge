@@ -13,4 +13,5 @@ main = defaultMain
      , TestTexture.testTexture
      , TestTexture.testOrientation
      , TestTexture.testAverageQuaternion
+     , TestTexture.testWeightedAverageQuaternion
      ]
