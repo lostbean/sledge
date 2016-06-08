@@ -185,7 +185,7 @@ genIsoSphereSO3Grid symm a = vs
     nstep  = floor (pi / step)
     iso    = isoSphere n
     minw   = getMinDistFZPlanes symm
-    vs     = U.cons zerorot (U.concatMap getLayer (U.enumFromStepN step step nstep))
+    vs     = U.cons mempty (U.concatMap getLayer (U.enumFromStepN step step nstep))
     toQ t  = U.map (\v -> toQuaternion (mkAxisPair v (Rad t)))
     getLayer t
       | t <= minw = toQ t (vertices iso)

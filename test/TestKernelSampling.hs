@@ -37,7 +37,7 @@ testKernelSampling n = do
 
   -- Sampling ODF
   let pdf x = maybe 0 (\((i,_,_)) -> ks U.! i) (VP.nearestThanNeighbor vp (4/80) x)
-  xs <- hitAndRunSlice defaultCfg pdf zerorot n
+  xs <- hitAndRunSlice defaultCfg pdf mempty n
   let ts = addManyKernels (Deg 1.5) vp (U.fromList xs) (U.replicate (U.length vs) 0)
 
   renderODF (vs, ts) "/home/edgar/OutputODF"

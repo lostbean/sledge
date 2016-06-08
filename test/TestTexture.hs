@@ -1,5 +1,6 @@
 {-# LANGUAGE
     FlexibleInstances
+  , ScopedTypeVariables
   , TypeSynonymInstances
   #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -9,9 +10,11 @@ module TestTexture
   , testAverageQuaternion
   , testWeightedAverageQuaternion
   , testSymmAverageQuaternion
+  , testRotProperties
   ) where
 
 import Control.Applicative
+import Data.Monoid ((<>), mempty)
 import Data.Vector (Vector)
 import Test.QuickCheck
 import Test.Tasty
@@ -48,11 +51,17 @@ instance Arbitrary Quaternion where
 instance Arbitrary Rodrigues where
   arbitrary = fromQuaternion <$> arbitrary
 
+instance Arbitrary RotMatrix where
+  arbitrary = fromQuaternion <$> arbitrary
+
+instance Arbitrary AxisPair where
+  arbitrary = fromQuaternion <$> arbitrary
+
 instance Arbitrary Deg where
   arbitrary = Deg <$> arbitrary
 
-(=@=) :: Deg -> Deg -> Bool
-a =@= b = isMainlyZero . fromAngle $ a - b
+(~=) :: (NearZero a, Ord a, Num a) => a -> a -> Bool
+a ~= b = isMainlyZero $ a - b
 
 msgFail :: (Show a, Testable prop)=> a -> prop -> Property
 msgFail text = counterexample ("\x1b[7m Fail: " ++ show text ++ "! \x1b[0m")
@@ -61,10 +70,71 @@ omegaDeg :: Rot q => q -> q -> Deg
 omegaDeg a b = toAngle . getOmega $ a -@- b :: Deg
 
 omegaSymmDeg :: Rot q => Symm -> q -> q -> Deg
-omegaSymmDeg symm a b = toAngle $ getMisoAngle Cubic (toQuaternion a) (toQuaternion b)
+omegaSymmDeg symm a b = toAngle $ getMisoAngle symm (toQuaternion a) (toQuaternion b)
 
 binaryTest :: (Show a, Show b) => String -> (a -> b -> Bool) -> a -> b -> Property
 binaryTest msg test a b = counterexample (msg ++ ": " ++ show a ++ " " ++ show b) $ a `test` b
+
+-- ================================================================================
+
+testRotProperties :: TestTree
+testRotProperties = testGroup "Orientations properties"
+  [ testMonoidInstances
+  , testGroupInstances
+  , testRotInstances
+  ]
+
+testMonoidInstances :: TestTree
+testMonoidInstances = testGroup "Monoid instances"
+  [ QC.testProperty "Quaternion" (\a -> testMonoidClass (a :: Quaternion))
+  , QC.testProperty "Euler"      (\a -> testMonoidClass (a :: Euler)     )
+  , QC.testProperty "AxisPair"   (\a -> testMonoidClass (a :: AxisPair)  )
+  , QC.testProperty "Rodrigues"  (\a -> testMonoidClass (a :: Rodrigues) )
+  , QC.testProperty "RotMatrix"  (\a -> testMonoidClass (a :: RotMatrix) )
+  ]
+
+testMonoidClass :: Rot a => a -> a -> a -> Property
+testMonoidClass q1 q2 q3 = let
+  qa = (q1 <> q2) <> q3
+  qb = q1 <> (q2 <> q3)
+  qc = q1 <> mempty
+  qd = mempty <> q1
+  in binaryTest "associative" (~=) (omegaDeg qa qb) (Deg 0) .&&.
+     binaryTest "right id"    (~=) (omegaDeg q1 qc) (Deg 0) .&&.
+     binaryTest "left id"     (~=) (omegaDeg q1 qd) (Deg 0)
+
+testGroupInstances :: TestTree
+testGroupInstances = testGroup "Group instances"
+  [ QC.testProperty "Quaternion" (\a -> testGroupClass (a :: Quaternion))
+  , QC.testProperty "Euler"      (\a -> testGroupClass (a :: Euler)     )
+  , QC.testProperty "AxisPair"   (\a -> testGroupClass (a :: AxisPair)  )
+  , QC.testProperty "Rodrigues"  (\a -> testGroupClass (a :: Rodrigues) )
+  , QC.testProperty "RotMatrix"  (\a -> testGroupClass (a :: RotMatrix) )
+  ]
+
+testGroupClass :: Rot a => a -> Property
+testGroupClass q1 = let
+  qa = q1 <> invert q1
+  qb = invert q1 <> q1
+  in binaryTest "right invert" (~=) (omegaDeg qa mempty) (Deg 0) .&&.
+     binaryTest "left invert"  (~=) (omegaDeg qb mempty) (Deg 0)
+
+testRotInstances :: TestTree
+testRotInstances = testGroup "Rot instances"
+  [ QC.testProperty "Quaternion" (\a -> testRotClass (a :: Quaternion))
+  , QC.testProperty "Euler"      (\a -> testRotClass (a :: Euler)     )
+  , QC.testProperty "AxisPair"   (\a -> testRotClass (a :: AxisPair)  )
+  , QC.testProperty "Rodrigues"  (\a -> testRotClass (a :: Rodrigues) )
+  , QC.testProperty "RotMatrix"  (\a -> testRotClass (a :: RotMatrix) )
+  ]
+
+testRotClass :: forall a . Rot a => a -> Property
+testRotClass r1 = let
+  q  = toQuaternion r1
+  r2 = fromQuaternion q :: a
+  in binaryTest "angle to quaternion"      (~=) (getOmega q )    (getOmega r1) .&&.
+     binaryTest "angle between conversion" (~=) (getOmega r1)    (getOmega r2) .&&.
+     binaryTest "conversion"               (~=) (omegaDeg r1 r2) (Deg 0)
 
 -- ================================================================================
 
@@ -205,14 +275,13 @@ mSymm = V.map func $ V.fromList ls
 
 testOrientation :: TestTree
 testOrientation = testGroup "Orientations"
-  [ QC.testProperty "deg/rad conversion"       testAngleConv
-  , QC.testProperty "fundamental zone(matrix)" testFundamentalZoneMatrix
+  [ testAngleConv
   , testOrientationModule
-  , testConv
   ]
 
-testAngleConv :: Deg -> Bool
-testAngleConv an = an =@= toAngle (fromAngle an)
+testAngleConv :: TestTree
+testAngleConv = QC.testProperty "deg/rad conversion" $
+  \an -> (an :: Deg) ~= toAngle (fromAngle an)
 
 -- | Verify the correctness of this module
 testOrientationModule :: TestTree
@@ -233,29 +302,9 @@ testOrientationModule = let
     step "misorientation"
     testMisso
 
-testConv :: TestTree
-testConv = testGroup "Rotation angles"
-  [ QC.testProperty "Matrix" $ \q -> let
-    m   = fromQuaternion q :: RotMatrix
-    qm  = toQuaternion m
-    in Deg 0 =@= toAngle (getOmega (q -@- qm ))
-  , QC.testProperty "Axis-pair" $ \q -> let
-    ap  = fromQuaternion q :: AxisPair
-    qap = toQuaternion ap
-    in Deg 0 =@= toAngle (getOmega (q -@- qap))
-  , QC.testProperty "Euler" $ \q -> let
-    e   = fromQuaternion q :: Euler
-    qe  = toQuaternion e
-    in Deg 0 =@= toAngle (getOmega (q -@- qe ))
-  , QC.testProperty "Rodrigues" $ \q -> let
-    r   = fromQuaternion q :: Rodrigues
-    qr  = toQuaternion r
-    in Deg 0 =@= toAngle (getOmega (q -@- qr ))
-  ]
-
 testgetAngle :: (Double -> Double) -> Quaternion -> Assertion
 testgetAngle foo q0 = let
-  toQ q = q                  :: Quaternion
+  toQ q = q                :: Quaternion
   toA q = fromQuaternion q :: AxisPair
   toE q = fromQuaternion q :: Euler
   toR q = fromQuaternion q :: Rodrigues
@@ -290,11 +339,11 @@ testComposition = let
   in do
     -- Rotation e1 followed by e2
     -- where e1 #<= e2 = Euler(30.0 deg, 30.0 deg, 0.0 deg)
-    HU.assertBool "Euler"      (Deg 0 =@= func (toQuaternion ce))
-    HU.assertBool "Quaternion" (Deg 0 =@= func (toQuaternion cq))
-    HU.assertBool "RotMatrix"  (Deg 0 =@= func (toQuaternion cm))
-    HU.assertBool "AxisPair"   (Deg 0 =@= func (toQuaternion ca))
-    HU.assertBool "Rodrigues"  (Deg 0 =@= func (toQuaternion cr))
+    HU.assertBool "Euler"      (Deg 0 ~= func (toQuaternion ce))
+    HU.assertBool "Quaternion" (Deg 0 ~= func (toQuaternion cq))
+    HU.assertBool "RotMatrix"  (Deg 0 ~= func (toQuaternion cm))
+    HU.assertBool "AxisPair"   (Deg 0 ~= func (toQuaternion ca))
+    HU.assertBool "Rodrigues"  (Deg 0 ~= func (toQuaternion cr))
 
 testMisso :: IO ()
 testMisso = let
@@ -309,9 +358,9 @@ testMisso = let
   testm =  q1 #<= (q2 -#- q1)
   func a b = toAngle $ getOmega (a -@- b)
   in do
-    HU.assertBool " e1 -@- e2 == e1 -#- e2"   (Deg 0 =@= func (invert  m)  mi)
-    HU.assertBool " e2 -@- e1 == e2 -#- e1"   (Deg 0 =@= func (invert cm) cmi)
-    HU.assertBool " e1 #<= (e2 -#- e1) == e2" (Deg 0 =@= func testm q2)
+    HU.assertBool " e1 -@- e2 == e1 -#- e2"   (Deg 0 ~= func (invert  m)  mi)
+    HU.assertBool " e2 -@- e1 == e2 -#- e1"   (Deg 0 ~= func (invert cm) cmi)
+    HU.assertBool " e1 #<= (e2 -#- e1) == e2" (Deg 0 ~= func testm q2)
 
 -- ================================================================================
 
@@ -325,7 +374,7 @@ testAverageQuaternion = testGroup "Simple average of two quaternions"
 testQAvg :: (Quaternion -> Quaternion -> Quaternion) -> Quaternion -> Quaternion -> Property
 testQAvg func q1 q2 = let
   avg = func q1 q2
-  in binaryTest "same angular dist" (=@=) (omegaDeg avg q1) (omegaDeg avg q2)
+  in binaryTest "same angular dist" (~=) (omegaDeg avg q1) (omegaDeg avg q2)
 
 -- ================================================================================
 
@@ -340,8 +389,8 @@ testWQAvg func q1 q2 = let
   avg1 = func (1,q1) (0,q2)
   avg2 = func (0,q1) (1,q2)
   avg3 = func (2,q1) (1,q2)
-  in binaryTest "close to q1"  (=@=) (omegaDeg avg1 q1) (Deg 0) .&&.
-     binaryTest "close to q2"  (=@=) (omegaDeg avg2 q2) (Deg 0) .&&.
+  in binaryTest "close to q1"  (~=) (omegaDeg avg1 q1) (Deg 0) .&&.
+     binaryTest "close to q2"  (~=) (omegaDeg avg2 q2) (Deg 0) .&&.
      binaryTest "closer to q1" (<)   (omegaDeg avg3 q1) (omegaDeg avg3 q2)
 
 -- ================================================================================
@@ -354,4 +403,4 @@ testSymmAverageQuaternion = testGroup "Simple average of two quaternions with sy
 testSymmQAvg :: (Quaternion -> Quaternion -> Quaternion) -> Quaternion -> Quaternion -> Property
 testSymmQAvg func q1 q2 = let
   avg = func q1 q2
-  in binaryTest "same angular dist" (=@=) (omegaSymmDeg Cubic avg q1) (omegaSymmDeg Cubic avg q2)
+  in binaryTest "same angular dist" (~=) (omegaSymmDeg Cubic avg q1) (omegaSymmDeg Cubic avg q2)

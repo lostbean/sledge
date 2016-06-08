@@ -30,7 +30,7 @@ testODF n = do
   writeUniVTKfile ("InputODF" ++ ".vtu") True vtkodf1
 
   -- Sampling ODF
-  xs <- hitAndRunSlice defaultCfg (getODFeval odf1) zerorot n
+  xs <- hitAndRunSlice defaultCfg (getODFeval odf1) mempty n
   let
     vtkodf2 = renderODFVTK $ addPoints (U.fromList xs) odf0
     vtkxs   = renderQuaternions (U.map (toFZ Cubic) $ U.fromList xs) []

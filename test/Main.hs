@@ -15,4 +15,5 @@ main = defaultMain
      , TestTexture.testAverageQuaternion
      , TestTexture.testWeightedAverageQuaternion
      , TestTexture.testSymmAverageQuaternion
+     , TestTexture.testRotProperties
      ]

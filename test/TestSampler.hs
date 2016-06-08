@@ -30,7 +30,7 @@ testSampFit n = let
   da3 = (10, mkQuaternion (Vec4 1 0 0 1))
   din = mkBingham da1 da2 da3
   in do
-    xs <- hitAndRunSlice defaultCfg (binghamPDF din) (zerorot) n
+    xs <- hitAndRunSlice defaultCfg (binghamPDF din) (mempty) n
     let dout = fitBingham (U.fromList xs)
     writeQuater "Bing-PDF-In-testSamplerQuality"  $ renderBingham din
     writeQuater "Bing-Samples-testSamplerQuality" $ renderPoints  xs
@@ -47,7 +47,7 @@ testSampMulti n = let
   db3 = (1,  mkQuaternion (Vec4 1 0 0 1))
   db  = mkBingham db1 db2 db3
   in do
-    xs <- hitAndRunSlice defaultCfg (\q -> binghamPDF da q + binghamPDF db q) (zerorot) n
+    xs <- hitAndRunSlice defaultCfg (\q -> binghamPDF da q + binghamPDF db q) (mempty) n
     writeQuater "Bing-PDF-A-testSamplerMultiModal"   $ renderBingham da
     writeQuater "Bing-PDF-B-testSamplerMultiModal"   $ renderBingham db
     writeQuater "Bing-Samples-testSamplerMultiModal" $ renderPoints  xs

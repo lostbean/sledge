@@ -124,7 +124,7 @@ getSymmAxes sym = case sym of
 -- in identity operator.
 mkSymmOps :: SymmAxis -> U.Vector SymmOp
 mkSymmOps (SymmAxis (v, nfold))
-  | nfold < 2 = U.singleton (SymmOp zerorot)
+  | nfold < 2 = U.singleton (SymmOp mempty)
   | otherwise = let
     omegaStep = 2 * pi / (fromIntegral nfold)
     mkOne i = let
@@ -285,7 +285,7 @@ getMisoAngle symm = let
 
 averageQuaternionWithSymm :: Foldable t => Symm -> t Quaternion -> Quaternion
 averageQuaternionWithSymm symm vq
-  | null vq   = zerorot
+  | null vq   = mempty
   | otherwise = averageWeightedQuaternion . bringTogether $ avgSites
   where
     os       = getSymmOps symm
