@@ -73,6 +73,7 @@ test-suite test
     build-depends: sledge
                  , hammer
                  , queryforest
+                 , linear-vect
                  , base
                  , QuickCheck
                  , vector

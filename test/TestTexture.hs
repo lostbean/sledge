@@ -1,10 +1,12 @@
-{-# LANGUAGE RecordWildCards #-}
-
+{-# LANGUAGE
+    FlexibleInstances
+  , TypeSynonymInstances
+  #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module TestTexture
   ( testTexture
   , testOrientation
   ) where
-
 
 import Control.Applicative
 import Data.Vector (Vector)
@@ -15,6 +17,7 @@ import Test.Tasty.QuickCheck as QC
 
 import qualified Data.Vector as V
 import Linear.Vect
+import Linear.Mat
 import Texture.Orientation
 import Texture.Symmetry
 
@@ -32,7 +35,7 @@ instance Arbitrary Euler where
       x1 = Deg <$> choose (0, 180)
       x2 = Deg <$> choose (0, 360)
 
-instance Arbitrary Vec3 where
+instance Arbitrary Vec3D where
   arbitrary = normalize <$> liftA3 Vec3 p p p
     where p = choose (0,1)
 
@@ -42,31 +45,34 @@ instance Arbitrary Quaternion where
 instance Arbitrary Rodrigues where
   arbitrary = fromQuaternion <$> arbitrary
 
-msgFail :: (Show a, Testable prop)=> a -> prop -> Property
-msgFail text = printTestCase ("\x1b[7m Fail: " ++ show text ++ "! \x1b[0m")
+instance Arbitrary Deg where
+  arbitrary = Deg <$> arbitrary
 
-errLimit :: Double
-errLimit = 1e-7
+(=@=) :: Deg -> Deg -> Bool
+a =@= b = isMainlyZero . fromAngle $ a - b
+
+msgFail :: (Show a, Testable prop)=> a -> prop -> Property
+msgFail text = counterexample ("\x1b[7m Fail: " ++ show text ++ "! \x1b[0m")
+
 
 testFundamentalZone :: Quaternion -> Property
 testFundamentalZone q = let
   fz    = getSymmOps Cubic
   r     = fromQuaternion q :: Rodrigues
-  inFZ1 = (toFZ Cubic q)   :: Quaternion
+  inFZ1 = toFZ Cubic     q :: Quaternion
   inFZ2 = toFZDirect fz_r r
   fz_r  = V.map (fromQuaternion . symmOp) $ V.convert fz :: Vector Rodrigues
-  delta = getOmega $ inFZ1 -#- (toQuaternion inFZ2)
-  err   = abs delta < errLimit || abs (delta - 2*pi) < errLimit
-  in msgFail ("No match in Fundamental Zone! " ++ show (delta)) err
-
+  delta = getOmega $ inFZ1 -#- toQuaternion inFZ2
+  err   = abs delta < epsilon || abs (delta - 2*pi) < epsilon
+  in msgFail ("No match in Fundamental Zone! " ++ show delta) err
 
 testFundamentalZoneMatrix :: Quaternion -> Property
 testFundamentalZoneMatrix q = let
   m     = fromQuaternion q :: RotMatrix
-  inFZ1 = (toFZ Cubic q) :: Quaternion
+  inFZ1 = toFZ Cubic     q :: Quaternion
   inFZ2 = toFZDirect mSymm m
-  delta = getOmega $ inFZ1 -#- (toQuaternion inFZ2)
-  err   = abs delta < errLimit || abs (delta - 2*pi) < errLimit
+  delta = getOmega $ inFZ1 -#- toQuaternion inFZ2
+  err   = abs delta < epsilon || abs (delta - 2*pi) < epsilon
 
   e  = fromQuaternion q         :: Euler
   a1 = toAngle $ getOmega inFZ2 :: Deg
@@ -192,14 +198,8 @@ testOrientation = testGroup "Orientations"
   , testConv
   ]
 
-instance Arbitrary Deg where
-  arbitrary = Deg <$> arbitrary
-
-(=@=) :: Deg -> Deg -> Bool
-a =@= b = abs (a - b) < Deg 0.0001
-
 testAngleConv :: Deg -> Bool
-testAngleConv an = an =@= (toAngle $ fromAngle an)
+testAngleConv an = an =@= toAngle (fromAngle an)
 
 -- | Verify the correctness of this module
 testOrientationModule :: TestTree
@@ -223,38 +223,37 @@ testOrientationModule = let
 testConv :: TestTree
 testConv = testGroup "Rotation angles"
   [ QC.testProperty "Matrix" $ \q -> let
-    m   = (fromQuaternion q) :: RotMatrix
+    m   = fromQuaternion q :: RotMatrix
     qm  = toQuaternion m
-    in Deg 0 =@= (toAngle $ getOmega (q -@- qm ))
+    in Deg 0 =@= toAngle (getOmega (q -@- qm ))
   , QC.testProperty "Axis-pair" $ \q -> let
-    ap  = (fromQuaternion q) :: AxisPair
+    ap  = fromQuaternion q :: AxisPair
     qap = toQuaternion ap
-    in Deg 0 =@= (toAngle $ getOmega (q -@- qap))
+    in Deg 0 =@= toAngle (getOmega (q -@- qap))
   , QC.testProperty "Euler" $ \q -> let
-    e   = (fromQuaternion q) :: Euler
+    e   = fromQuaternion q :: Euler
     qe  = toQuaternion e
-    in Deg 0 =@= (toAngle $ getOmega (q -@- qe ))
+    in Deg 0 =@= toAngle (getOmega (q -@- qe ))
   , QC.testProperty "Rodrigues" $ \q -> let
-    r   = (fromQuaternion q) :: Rodrigues
+    r   = fromQuaternion q :: Rodrigues
     qr  = toQuaternion r
-    in Deg 0 =@= (toAngle $ getOmega (q -@- qr ))
+    in Deg 0 =@= toAngle (getOmega (q -@- qr ))
   ]
 
 testgetAngle :: (Double -> Double) -> Quaternion -> Assertion
-testgetAngle foo q0 = do
-  let
-    toQ q = q                  :: Quaternion
-    toA q = (fromQuaternion q) :: AxisPair
-    toE q = (fromQuaternion q) :: Euler
-    toR q = (fromQuaternion q) :: Rodrigues
-    toM q = (fromQuaternion q) :: RotMatrix
-    isOk a = a >= Deg 0 && a < Deg 360
-    in do
-      HU.assertBool "Quaternion" (isOk . toAngle . foo . getOmega . toQ $ q0)
-      HU.assertBool "Matrix"     (isOk . toAngle . foo . getOmega . toM $ q0)
-      HU.assertBool "Axis-pair"  (isOk . toAngle . foo . getOmega . toA $ q0)
-      HU.assertBool "Euler"      (isOk . toAngle . foo . getOmega . toE $ q0)
-      HU.assertBool "Rodrigues"  (isOk . toAngle . foo . getOmega . toR $ q0)
+testgetAngle foo q0 = let
+  toQ q = q                  :: Quaternion
+  toA q = fromQuaternion q :: AxisPair
+  toE q = fromQuaternion q :: Euler
+  toR q = fromQuaternion q :: Rodrigues
+  toM q = fromQuaternion q :: RotMatrix
+  isOk a = a >= Deg 0 && a < Deg 360
+  in do
+    HU.assertBool "Quaternion" (isOk . toAngle . foo . getOmega . toQ $ q0)
+    HU.assertBool "Matrix"     (isOk . toAngle . foo . getOmega . toM $ q0)
+    HU.assertBool "Axis-pair"  (isOk . toAngle . foo . getOmega . toA $ q0)
+    HU.assertBool "Euler"      (isOk . toAngle . foo . getOmega . toE $ q0)
+    HU.assertBool "Rodrigues"  (isOk . toAngle . foo . getOmega . toR $ q0)
 
 testComposition :: IO ()
 testComposition = let
@@ -278,11 +277,11 @@ testComposition = let
   in do
     -- Rotation e1 followed by e2
     -- where e1 #<= e2 = Euler(30.0 deg, 30.0 deg, 0.0 deg)
-    HU.assertBool "Euler"      (Deg 0 =@= (func $ toQuaternion ce))
-    HU.assertBool "Quaternion" (Deg 0 =@= (func $ toQuaternion cq))
-    HU.assertBool "RotMatrix"  (Deg 0 =@= (func $ toQuaternion cm))
-    HU.assertBool "AxisPair"   (Deg 0 =@= (func $ toQuaternion ca))
-    HU.assertBool "Rodrigues"  (Deg 0 =@= (func $ toQuaternion cr))
+    HU.assertBool "Euler"      (Deg 0 =@= func (toQuaternion ce))
+    HU.assertBool "Quaternion" (Deg 0 =@= func (toQuaternion cq))
+    HU.assertBool "RotMatrix"  (Deg 0 =@= func (toQuaternion cm))
+    HU.assertBool "AxisPair"   (Deg 0 =@= func (toQuaternion ca))
+    HU.assertBool "Rodrigues"  (Deg 0 =@= func (toQuaternion cr))
 
 testMisso :: IO ()
 testMisso = let
@@ -297,6 +296,6 @@ testMisso = let
   testm =  q1 #<= (q2 -#- q1)
   func a b = toAngle $ getOmega (a -@- b)
   in do
-    HU.assertBool " e1 -@- e2 == e1 -#- e2"   (Deg 0 =@= (func (invert  m)  mi))
-    HU.assertBool " e2 -@- e1 == e2 -#- e1"   (Deg 0 =@= (func (invert cm) cmi))
-    HU.assertBool " e1 #<= (e2 -#- e1) == e2" (Deg 0 =@= (func testm q2))
+    HU.assertBool " e1 -@- e2 == e1 -#- e2"   (Deg 0 =@= func (invert  m)  mi)
+    HU.assertBool " e2 -@- e1 == e2 -#- e1"   (Deg 0 =@= func (invert cm) cmi)
+    HU.assertBool " e1 #<= (e2 -#- e1) == e2" (Deg 0 =@= func testm q2)
