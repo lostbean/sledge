@@ -6,6 +6,7 @@
 module TestTexture
   ( testTexture
   , testOrientation
+  , testAverageQuaternion
   ) where
 
 import Control.Applicative
@@ -54,6 +55,13 @@ a =@= b = isMainlyZero . fromAngle $ a - b
 msgFail :: (Show a, Testable prop)=> a -> prop -> Property
 msgFail text = counterexample ("\x1b[7m Fail: " ++ show text ++ "! \x1b[0m")
 
+omegaDeg :: Rot q => q -> q -> Deg
+omegaDeg a b = toAngle . getOmega $ a -@- b :: Deg
+
+binaryTest :: (Show a, Show b) => String -> (a -> b -> Bool) -> a -> b -> Property
+binaryTest msg test a b = counterexample (msg ++ ": " ++ show a ++ " " ++ show b) $ a `test` b
+
+-- ================================================================================
 
 testFundamentalZone :: Quaternion -> Property
 testFundamentalZone q = let
@@ -299,3 +307,16 @@ testMisso = let
     HU.assertBool " e1 -@- e2 == e1 -#- e2"   (Deg 0 =@= func (invert  m)  mi)
     HU.assertBool " e2 -@- e1 == e2 -#- e1"   (Deg 0 =@= func (invert cm) cmi)
     HU.assertBool " e1 #<= (e2 -#- e1) == e2" (Deg 0 =@= func testm q2)
+
+-- ================================================================================
+
+testAverageQuaternion :: TestTree
+testAverageQuaternion = testGroup "Simple average of two quaternions"
+  [ QC.testProperty "averageTwoQuaternion"      (testQAvg (\a b -> averageTwoQuaternion (1, a) (1, b)))
+  , QC.testProperty "averageQuaternion"         (testQAvg (\a b -> averageQuaternion [a, b]))
+  ]
+
+testQAvg :: (Quaternion -> Quaternion -> Quaternion) -> Quaternion -> Quaternion -> Property
+testQAvg func q1 q2 = let
+  avg = func q1 q2
+  in binaryTest "same angular dist" (=@=) (omegaDeg avg q1) (omegaDeg avg q2)

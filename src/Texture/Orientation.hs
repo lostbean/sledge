@@ -71,18 +71,21 @@ module Texture.Orientation
     -- * Vector rotation
   , activeVecRotation
   , passiveVecRotation
+    -- * Averaging
+  , averageQuaternion
+  , averageTwoQuaternion
+  , getScatterMatrix
     -- * Other functions
   , getRTNdir
   , get100dir
   , quaterInterpolation
-  , averageQuaternion
-  , getScatterMatrix
   , aproxToIdealAxis
   , getAbsShortAngle
   , getShortAngle
   ) where
 
 import Control.DeepSeq
+import Data.Coerce
 import Data.Vector.Unboxed.Deriving
 import Data.Ratio
 import Linear.Decomp
@@ -534,6 +537,32 @@ quaterInterpolation t (Quaternion pa) (Quaternion pb) = mkUnsafeQuaternion v
     y  = sin (omega * (1-t)) / s
     yb = sin (omega *    t ) / s
 
+averageQuaternion :: Foldable t => t Quaternion -> Quaternion
+averageQuaternion qs
+  | null qs   = zerorot
+  | otherwise = mkQuaternion . foldl func zero $ qs
+  where
+    -- Doesn't need to check which representation (q or antipodal q) is the closest to
+    -- the accumulator (acc &. q >= 0) because Quaternion enforces the use of half the
+    -- space (only q0 > 0).
+    func acc q = acc &+ coerce q
+
+-- | Calculates the average orientation from two quaternions
+-- See "Averaging Quaternions", FL Markley, 2007
+averageTwoQuaternion :: (Double, Quaternion) -> (Double, Quaternion) -> Quaternion
+averageTwoQuaternion (w1, q1) (w2, q2)
+  | not (isMainlyZero v12) = mkQuaternion x
+  | isMainlyZero dw        = mkQuaternion $ v1 &+ v2
+  | w1 > w2                = mkQuaternion $ (2 * abs dw) *& v1
+  | otherwise              = mkQuaternion $ (2 * abs dw) *& v2
+  where
+    v1  = quaterVec q1
+    v2  = quaterVec q2
+    v12 = v1 &. v2
+    dw  = w1 - w2
+    z   = sqrt $ dw * dw + 4 * w1 * w2 * v12 * v12
+    x   = (dw + z) *& v1 &+ (2 * w2 * v12) *& v2
+
 -- | Calculates the scatter matrix that describes a given distribution.
 getScatterMatrix :: U.Vector Quaternion -> Mat4D
 getScatterMatrix qs
@@ -546,10 +575,11 @@ getScatterMatrix qs
       v = quaterVec q
       in acc &+ (outer v v)
 
+{-- TODO: not working. Check symmEigen correctness.
 -- | Calculates the average orientation from a distribution.
 -- See "Averaging Quaternions", FL Markley, 2007
-averageQuaternion :: U.Vector Quaternion -> Quaternion
-averageQuaternion vq = mkQuaternion $ case i of
+averageQuaternionByScatterMatrix :: U.Vector Quaternion -> Quaternion
+averageQuaternionByScatterMatrix vq = mkQuaternion $ case i of
   0 -> v1
   1 -> v2
   2 -> v3
@@ -561,6 +591,7 @@ averageQuaternion vq = mkQuaternion $ case i of
     -- (highest eigenvalue = highest concentration value = distribution mode)
     Mat4 v1 v2 v3 v4 = transpose ev
     i = U.maxIndex $ U.fromList [_1 ex, _2 ex, _3 ex, _4 ex]
+--}
 
 -- | Calculates the approximated integer representation of poles (e.g. < 10 2 2 >).
 aproxToIdealAxis :: Vec3D -> Double -> (Int, Int, Int)

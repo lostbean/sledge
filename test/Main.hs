@@ -8,7 +8,9 @@ import TestKernel
 
 main :: IO ()
 main = defaultMain
-     $ testGroup "Tests" [ TestKernel.test
-                         , TestTexture.testTexture
-                         , TestTexture.testOrientation
-                         ]
+     $ testGroup "Tests"
+     [ TestKernel.test
+     , TestTexture.testTexture
+     , TestTexture.testOrientation
+     , TestTexture.testAverageQuaternion
+     ]
