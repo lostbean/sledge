@@ -37,13 +37,17 @@ module Texture.Symmetry
   , mkSymmOps
   , SymmAxis
   , mkSymmAxis
+    -- * Averaging
+  , averageQuaternionWithSymm
   ) where
 
 import Control.DeepSeq
-import Data.Vector.Unboxed.Deriving
+import Control.Monad
 import Data.Function (on)
 import Data.Maybe (isNothing)
+import Data.Vector.Unboxed.Deriving
 import Linear.Vect
+import qualified Data.List           as L
 import qualified Data.Vector         as V
 import qualified Data.Vector.Unboxed as U
 
@@ -277,7 +281,46 @@ getMisoAngle symm = let
   -- avoiding eta expansion of q1 and q2 to memorize
   in \q1 q2 -> foo (q2 -#- q1)
 
--- -------------------------------------------- Unbox SymmOp ----------------------------------------------------
+-- ================================== Averaging quaternions regarding symmetry ===========================================
+
+averageQuaternionWithSymm :: Foldable t => Symm -> t Quaternion -> Quaternion
+averageQuaternionWithSymm symm vq
+  | null vq   = zerorot
+  | otherwise = averageWeightedQuaternion . bringTogether $ avgSites
+  where
+    os       = getSymmOps symm
+    avgSites = foldl addOnBucket [] vq
+    omega    = cos $ 0.5 * fromAngle (Deg 5)
+
+    addOnBucket :: [(Quaternion, Vec4D)] -> Quaternion -> [(Quaternion, Vec4D)]
+    addOnBucket buckets q = go [] buckets
+      where
+        go acc (x : xs) = maybe (go (x : acc) xs) ((acc ++) .  (: xs)) (simpleAvg x q)
+        go acc _        = (q, quaterVec q) : acc
+
+    simpleAvg :: (Quaternion, Vec4D) -> Quaternion -> Maybe (Quaternion, Vec4D)
+    simpleAvg (ref, acc) q = let
+      q0 = composeQ0 (invert ref) q
+      -- Doesn't need to check which representation (q or antipodal q) is the closest to
+      -- the accumulator (acc &. q >= 0) because Quaternion enforces the use of half the
+      -- space (only q0 > 0).
+      in guard (q0 > omega) >> pure (ref, quaterVec q &+ acc)
+
+    bringTogether xs = case L.sortBy (flip compare `on` (vlen . snd)) xs of
+      ((_, q) : qs) -> (vlen q, mkQuaternion q) : map (findClosest (mkQuaternion q) . snd) qs
+      _             -> []
+
+    findClosest :: Quaternion -> Vec4D -> (Double, Quaternion)
+    findClosest ref v = let
+      vl  = vlen v
+      q   = mkQuaternion v
+      qs  = U.map ((q #<=) . symmOp) os
+      ms  = U.map (composeQ0 (invert ref)) qs
+      i   = U.maxIndex ms
+      vi  = qs U.! i
+      in (vl, vi)
+
+-- ============================================ Unbox SymmOp ====================================================
 
 derivingUnbox "SymmOp"
     [t| SymmOp -> Quaternion |]

@@ -8,6 +8,7 @@ module TestTexture
   , testOrientation
   , testAverageQuaternion
   , testWeightedAverageQuaternion
+  , testSymmAverageQuaternion
   ) where
 
 import Control.Applicative
@@ -58,6 +59,9 @@ msgFail text = counterexample ("\x1b[7m Fail: " ++ show text ++ "! \x1b[0m")
 
 omegaDeg :: Rot q => q -> q -> Deg
 omegaDeg a b = toAngle . getOmega $ a -@- b :: Deg
+
+omegaSymmDeg :: Rot q => Symm -> q -> q -> Deg
+omegaSymmDeg symm a b = toAngle $ getMisoAngle Cubic (toQuaternion a) (toQuaternion b)
 
 binaryTest :: (Show a, Show b) => String -> (a -> b -> Bool) -> a -> b -> Property
 binaryTest msg test a b = counterexample (msg ++ ": " ++ show a ++ " " ++ show b) $ a `test` b
@@ -339,3 +343,15 @@ testWQAvg func q1 q2 = let
   in binaryTest "close to q1"  (=@=) (omegaDeg avg1 q1) (Deg 0) .&&.
      binaryTest "close to q2"  (=@=) (omegaDeg avg2 q2) (Deg 0) .&&.
      binaryTest "closer to q1" (<)   (omegaDeg avg3 q1) (omegaDeg avg3 q2)
+
+-- ================================================================================
+
+testSymmAverageQuaternion :: TestTree
+testSymmAverageQuaternion = testGroup "Simple average of two quaternions with symmetry"
+  [ QC.testProperty "averageQuaternionWithSymm" (testSymmQAvg (\a b -> averageQuaternionWithSymm Cubic [a, b]))
+  ]
+
+testSymmQAvg :: (Quaternion -> Quaternion -> Quaternion) -> Quaternion -> Quaternion -> Property
+testSymmQAvg func q1 q2 = let
+  avg = func q1 q2
+  in binaryTest "same angular dist" (=@=) (omegaSymmDeg Cubic avg q1) (omegaSymmDeg Cubic avg q2)
