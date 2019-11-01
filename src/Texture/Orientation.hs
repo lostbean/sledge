@@ -136,10 +136,16 @@ instance Random Quaternion where
     in (mkQuaternion $ Vec4 q0 q1 q2 q3, gen1)
 
 -- | Angles in degrees.
-newtype Deg = Deg { unDeg :: Double } deriving (Eq, Num, Ord, NearZero)
+newtype Deg = Deg { unDeg :: Double } deriving (Eq, Num, Ord)
 
 -- | Angles in radians.
-newtype Rad = Rad { unRad :: Double } deriving (Eq, Num, Ord, NearZero)
+newtype Rad = Rad { unRad :: Double } deriving (Eq, Num, Ord)
+
+instance NearZero Deg where
+  epsilon = Deg epsilon 
+
+instance NearZero Rad where
+  epsilon = Rad epsilon 
 
 -- | Euler angles represents the composition of three independent
 -- rotations: phi1 -> PHI -> phi2 where
@@ -267,31 +273,43 @@ unsafeMergeQuaternion (q0, Vec3 q1 q2 q3) = mkUnsafeQuaternion (Vec4 q0 q1 q2 q3
 
 instance Monoid Quaternion where
   mempty = Quaternion $ Vec4 1 0 0 0
-  mappend p q = let
+
+instance Monoid Rodrigues where
+  mempty = Rodrigues zero
+
+instance Monoid AxisPair where
+  mempty = AxisPair (Vec3 1 0 0, 0)
+
+instance Monoid Euler where
+  mempty = Euler 0 0 0
+
+instance Monoid RotMatrix where
+  mempty = idmtx
+
+-- =====================================  Semigroup class ======================================
+
+instance Semigroup Quaternion where
+  (<>) p q = let
     (p0, pv) = splitQuaternion p
     (q0, qv) = splitQuaternion q
     pq0 = p0 * q0 - pv &. qv
     pq  = p0 *& qv &+ q0 *& pv &+ pv &^ qv
     in unsafeMergeQuaternion (pq0, pq)
 
-instance Monoid Rodrigues where
-  mempty = Rodrigues zero
-  mappend (Rodrigues rA) (Rodrigues rB) = let
+instance Semigroup Rodrigues where
+  (<>) (Rodrigues rA) (Rodrigues rB) = let
     r = (rB &+ rA) &- (rB &^ rA)
     k = 1.0 - (rB &. rA)
     in Rodrigues $ r &* (1 / k)
 
-instance Monoid AxisPair where
-  mempty = AxisPair (Vec3 1 0 0, 0)
-  mappend a b = fromQuaternion $ (toQuaternion a) #<= (toQuaternion b)
+instance Semigroup AxisPair where
+  (<>) a b = fromQuaternion $ (toQuaternion a) #<= (toQuaternion b)
 
-instance Monoid Euler where
-  mempty = Euler 0 0 0
-  mappend a b = fromQuaternion $ (toQuaternion a) #<= (toQuaternion b)
+instance Semigroup Euler where
+  (<>) a b = fromQuaternion $ (toQuaternion a) #<= (toQuaternion b)
 
-instance Monoid RotMatrix where
-  mempty = idmtx
-  mappend a b = b .*. a  -- In matrix composition the multiplication is commuted
+instance Semigroup RotMatrix where
+  (<>) a b = b .*. a  -- In matrix composition the multiplication is commuted
 
 -- =====================================  Group class ======================================
 
