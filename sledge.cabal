@@ -101,6 +101,7 @@ Library
                 , blaze-builder           >= 0.3
                 , queryforest             >= 0.1
                 , linear-vect             >= 0.2
+                , serialise               >= 0.2
 
   exposed-modules:  Texture.Symmetry
                     Texture.Orientation
@@ -133,6 +134,3 @@ Library
                   -Wall
                   -funbox-strict-fields
                   -threaded
-                  -- -eventlog
-                  -auto-all
-                  -caf-all

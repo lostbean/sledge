@@ -1,5 +1,6 @@
 {-# LANGUAGE
-    FlexibleContexts
+    DeriveGeneric
+  , FlexibleContexts
   , GeneralizedNewtypeDeriving
   , MultiParamTypeClasses
   , NamedFieldPuns
@@ -89,10 +90,12 @@ module Texture.Orientation
   , getShortAngle
   ) where
 
+import Codec.Serialise (Serialise)
 import Control.DeepSeq
 import Data.Coerce
 import Data.Vector.Unboxed.Deriving
 import Data.Ratio
+import GHC.Generics
 import Linear.Decomp
 import Linear.Mat
 import Linear.Vect
@@ -113,7 +116,7 @@ import qualified Data.Vector.Unboxed as U
 data RefFrame = ND
               | TD
               | RD
-              deriving (Show, Eq)
+              deriving (Show, Generic, Eq)
 
 -- | Unit quaternion representation of orientation (rotation).
 -- It is the basic and central representation used in this module.
@@ -121,7 +124,7 @@ data RefFrame = ND
 newtype Quaternion =
   Quaternion
   { quaterVec :: Vec4D
-  } deriving (Eq, NFData)
+  } deriving (Eq, Generic, NFData)
 
 instance Random Quaternion where
   random             = randomR (mempty, mempty)
@@ -136,10 +139,10 @@ instance Random Quaternion where
     in (mkQuaternion $ Vec4 q0 q1 q2 q3, gen1)
 
 -- | Angles in degrees.
-newtype Deg = Deg { unDeg :: Double } deriving (Eq, Num, Ord)
+newtype Deg = Deg { unDeg :: Double } deriving (Eq, Num, Ord, Generic)
 
 -- | Angles in radians.
-newtype Rad = Rad { unRad :: Double } deriving (Eq, Num, Ord)
+newtype Rad = Rad { unRad :: Double } deriving (Eq, Num, Ord, Generic)
 
 instance NearZero Deg where
   epsilon = Deg epsilon 
@@ -161,20 +164,20 @@ data Euler =
   { phi1 :: Double
   , phi  :: Double
   , phi2 :: Double
-  } deriving (Eq)
+  } deriving (Eq, Generic)
 
 -- | Axis-angle representation. The axis is a normalized direction
 -- and the angle in radians.
 newtype AxisPair =
   AxisPair
   { axisAngle :: (Vec3D, Double)
-  } deriving (Eq, NFData)
+  } deriving (Eq, Generic, NFData)
 
 -- | Frank-Rodrigues representation.
 newtype Rodrigues =
   Rodrigues
   { rodriVec :: Vec3D
-  } deriving (Eq, NFData)
+  } deriving (Eq, Generic, NFData)
 
 -- | Frank-Rodrigues representation.
 newtype RotMatrix =
@@ -184,6 +187,15 @@ newtype RotMatrix =
 
 instance Transpose RotMatrix RotMatrix where
   transpose = RotMatrix . transpose . rotMat
+
+-- ==================================  Serialise instances ===================================
+
+instance Serialise Quaternion
+instance Serialise Euler
+instance Serialise AxisPair
+instance Serialise Rodrigues
+instance Serialise Deg
+instance Serialise Rad
 
 -- ==================================  Angle class ===================================
 

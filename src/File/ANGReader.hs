@@ -1,6 +1,7 @@
 {-# LANGUAGE
-    RecordWildCards
+    DeriveGeneric
   , OverloadedStrings
+  , RecordWildCards
   #-}
 -- | Read and load *.ang files from ANG measure systems.
 module File.ANGReader
@@ -13,9 +14,11 @@ module File.ANGReader
   , ANGdata  (..)
   ) where
 
+import Codec.Serialise (Serialise)
 import Control.Applicative ((<|>))
 import Data.Attoparsec.ByteString.Char8
 import Data.Vector (Vector)
+import GHC.Generics
 import Hammer.VoxBox
 import qualified Data.ByteString     as B
 import qualified Data.Vector         as V
@@ -56,7 +59,7 @@ data ANGpoint
   , phaseNum :: {-# UNPACK #-} !Int
   , detecInt :: {-# UNPACK #-} !Int
   , fit      :: {-# UNPACK #-} !Double
-  } deriving Show
+  } deriving (Generic, Show)
 
 -- | Information describing the measuriment.
 data ANGinfo =
@@ -66,7 +69,7 @@ data ANGinfo =
   , operator :: String
   , sampleID :: String
   , scanID   :: String
-  } deriving Show
+  } deriving (Generic, Show)
 
 data ANGphase =
   ANGphase
@@ -80,7 +83,7 @@ data ANGphase =
   , hklFamilies  :: [(Int, Int, Int, Int, Double, Int)]
   , elasticConst :: [(Double, Double, Double, Double, Double, Double)]
   , categories   :: (Int, Int, Int, Int, Int)
-  } deriving Show
+  } deriving (Generic, Show)
 
 -- | Information about the grid of point. Hexagonal or Square
 data ANGgrid
@@ -89,7 +92,7 @@ data ANGgrid
   , xystep  :: (Double, Double)
   , origin  :: (Double, Double, Double)
   , hexGrid :: Bool
-  } deriving Show
+  } deriving (Generic, Show)
 
 -- | Hold the whole ANG data strcuture
 data ANGdata
@@ -98,7 +101,13 @@ data ANGdata
   , grid     :: ANGgrid
   , ebsdInfo :: ANGinfo
   , phases   :: [ANGphase]
-  } deriving Show
+  } deriving (Generic, Show)
+
+instance Serialise ANGpoint
+instance Serialise ANGinfo
+instance Serialise ANGphase
+instance Serialise ANGgrid
+instance Serialise ANGdata
 
 -- ============================== Parse functions ========================================
 
