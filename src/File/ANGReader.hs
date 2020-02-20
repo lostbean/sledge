@@ -6,6 +6,7 @@
 -- | Read and load *.ang files from ANG measure systems.
 module File.ANGReader
   ( parseANG
+  , parseANGFile
   , angToVoxBox
   , ANGpoint (..)
   , ANGinfo  (..)
@@ -16,13 +17,14 @@ module File.ANGReader
 
 import Codec.Serialise (Serialise)
 import Control.Applicative ((<|>))
-import Data.Attoparsec.ByteString.Char8
+import Data.Attoparsec.Lazy
 import Data.Vector (Vector)
 import GHC.Generics
 import Hammer.VoxBox
-import qualified Data.ByteString     as B
-import qualified Data.Vector         as V
-import qualified Data.Vector.Unboxed as U
+import qualified Data.ByteString.Lazy as B
+import qualified Data.Vector          as V
+import qualified Data.Vector.Unboxed  as U
+import qualified Data.ByteString.Internal as BS (w2c)
 
 import File.InternalParsers
 import Texture.Orientation (Quaternion, toQuaternion, mkEuler, Rad(..))
@@ -61,7 +63,7 @@ data ANGpoint
   , fit      :: {-# UNPACK #-} !Double
   } deriving (Generic, Show)
 
--- | Information describing the measuriment.
+-- | Information describing the measurement.
 data ANGinfo =
   ANGinfo
   { workDist :: Double
@@ -94,7 +96,7 @@ data ANGgrid
   , hexGrid :: Bool
   } deriving (Generic, Show)
 
--- | Hold the whole ANG data strcuture
+-- | Hold the whole ANG data structure
 data ANGdata
   = ANGdata
   { nodes    :: Vector ANGpoint
@@ -111,16 +113,20 @@ instance Serialise ANGdata
 
 -- ============================== Parse functions ========================================
 
--- | Read the input ANG file. Rise an error mesage in case of bad format or acess.
-parseANG :: String -> IO ANGdata
-parseANG fileName = do
+-- | Read the input ANG file. Rise an error message in case of bad format or access.
+parseANGFile :: String -> IO ANGdata
+parseANGFile fileName = do
   stream <- B.readFile fileName
-  let
-    ebsd = case parseOnly parseANGdata stream of
-      Left err -> error ("[ANG] Error reading file " ++ fileName ++ "\n\tReason: " ++ show err)
-      Right x  -> x
-  checkDataShape ebsd
-  checkDataSize  ebsd
+  case parseANG stream of
+    Left err -> error ("[ANG] Error reading file " ++ fileName ++ "\n\tReason: " ++ show err)
+    Right x  -> return x
+
+-- | Read the input ANG file. Rise an error message in case of bad format or access.
+parseANG:: B.ByteString -> Either String ANGdata
+parseANG bs = do
+  ebsd <- eitherResult (parse parseANGdata bs)
+  _ <- checkDataShape ebsd
+  _ <- checkDataSize  ebsd
   return ebsd
 
 parseANGdata :: Parser ANGdata
@@ -138,26 +144,26 @@ parseANGdata = do
   point_list <- many1 (pointParse grid_info)
   return $ ANGdata (V.fromList point_list) grid_info head_info phases_info
 
-checkDataShape :: ANGdata -> IO ()
+checkDataShape :: ANGdata -> Either String String
 checkDataShape ANGdata{..}
-  | not hexGrid && cEven == cOdd = putStrLn "[ANG] Using square grid."
-  | not hexGrid = msg
-  | otherwise   = putStrLn "[ANG] Using hexagonal grid."
+  | not hexGrid && cEven == cOdd = Right "[ANG] Using square grid."
+  | not hexGrid = Left msg
+  | otherwise   = Right "[ANG] Using hexagonal grid."
   where
-    msg = error $ "[ANG] Improper square grid shape. (row, cEven, cOdd) = " ++ show rowCols
+    msg = "[ANG] Improper square grid shape. (row, cEven, cOdd) = " ++ show rowCols
     ANGgrid{..}     = grid
     (_, cEven, cOdd) = rowCols
 
-checkDataSize :: ANGdata -> IO ()
+checkDataSize :: ANGdata -> Either String String
 checkDataSize ANGdata{..}
-  | V.length nodes == n = putStrLn $ "[ANG] Loaded numbers of points: " ++ show n
-  | otherwise = msg
+  | V.length nodes == n = Right $ "[ANG] Loaded numbers of points: " ++ show n
+  | otherwise = Left msg
   where
     ANGgrid{..}       = grid
     (row, cEven, cOdd) = rowCols
     (halfrow, leftrow) = row `quotRem` 2
     n = halfrow * cEven + (halfrow + leftrow) * cOdd
-    msg = error $ "[ANG] Invalid numbers of points. Expected " ++
+    msg = "[ANG] Invalid numbers of points. Expected " ++
           show n ++ " but found " ++
           show (V.length nodes) ++ ". The grid shape is given by (row, cEven, cOdd) = " ++
           show rowCols
@@ -273,7 +279,7 @@ pointParse g = parser <?> "Failed to parse EBSD point"
       ph <- parseInt
       dc <- parseInt
       f  <- parseFloat <|> return 0
-      skipWhile (not . isEOL)
+      skipWhile (not . isEOL . BS.w2c)
       eol
       let rot     = toQuaternion $ mkEuler (Rad p1) (Rad p) (Rad p2)
           (xi,yi) = getGridPoint g (x, y)
