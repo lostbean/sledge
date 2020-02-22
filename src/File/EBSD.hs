@@ -4,14 +4,15 @@ module File.EBSD
   , toCTF
   , writeANG
   , writeCTF
+  , loadEBSD
   , readEBSD
   , readEBSDToVoxBox
   ) where
 
-import Control.Exception
 import Hammer.VoxBox
-import qualified Data.Vector         as V
-import qualified Data.Vector.Unboxed as U
+import qualified Data.ByteString.Lazy as BSL
+import qualified Data.Vector          as V
+import qualified Data.Vector.Unboxed  as U
 
 import File.ANGReader as A
 import File.ANGWriter
@@ -133,16 +134,17 @@ ctfdata2angdata d = ANGdata
 
 -- =================================== Reader ========================================
 
-readEBSD :: FilePath -> IO (Either ANGdata CTFdata)
-readEBSD f = let
+loadEBSD :: BSL.ByteString -> Either ANGdata CTFdata
+loadEBSD bs = let
   msg e1 e2 = "This file is neither a valid ANG file nor a valid CTF file.\n" ++ e1 ++ "\n" ++ e2
-  in catch (Left <$> parseANGFile f) (\eANG -> do
-     let errANG = show (eANG :: SomeException)
-     catch (Right <$> parseCTF f) (\eCTF -> do
-        let errCTF = show (eCTF :: SomeException)
-        error (msg errANG errCTF)
-        )
-  )
+  in case loadANG bs of
+    Left errANG -> case loadCTF bs of
+      Left errCTF -> error(msg errANG errCTF)
+      Right ang -> Right ang
+    Right ctf -> Left ctf
+
+readEBSD :: FilePath -> IO (Either ANGdata CTFdata)
+readEBSD f = loadEBSD <$> BSL.readFile f
 
 readEBSDToVoxBox :: (U.Unbox a)=> (CTFpoint -> a) -> (ANGpoint -> a) -> Either ANGdata CTFdata -> VoxBox a
 readEBSDToVoxBox fctf fang = either (either error id . flip A.angToVoxBox fang) (flip C.ctfToVoxBox fctf)

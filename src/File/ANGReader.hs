@@ -5,8 +5,8 @@
   #-}
 -- | Read and load *.ang files from ANG measure systems.
 module File.ANGReader
-  ( parseANG
-  , parseANGFile
+  ( loadANG
+  , readFileANG
   , angToVoxBox
   , ANGpoint (..)
   , ANGinfo  (..)
@@ -114,16 +114,16 @@ instance Serialise ANGdata
 -- ============================== Parse functions ========================================
 
 -- | Read the input ANG file. Rise an error message in case of bad format or access.
-parseANGFile :: String -> IO ANGdata
-parseANGFile fileName = do
+readFileANG :: String -> IO ANGdata
+readFileANG fileName = do
   stream <- B.readFile fileName
-  case parseANG stream of
+  case loadANG stream of
     Left err -> error ("[ANG] Error reading file " ++ fileName ++ "\n\tReason: " ++ show err)
     Right x  -> return x
 
 -- | Read the input ANG file. Rise an error message in case of bad format or access.
-parseANG:: B.ByteString -> Either String ANGdata
-parseANG bs = do
+loadANG:: B.ByteString -> Either String ANGdata
+loadANG bs = do
   ebsd <- eitherResult (parse parseANGdata bs)
   _ <- checkDataShape ebsd
   _ <- checkDataSize  ebsd

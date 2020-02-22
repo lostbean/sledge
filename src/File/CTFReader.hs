@@ -4,7 +4,8 @@
   #-}
 -- | Read and load *.ctf files from CTF measure systems.
 module File.CTFReader
-  ( parseCTF
+  ( loadCTF
+  , readFileCTF
   , ctfToVoxBox
   , CTFpoint (..)
   , CTFinfo  (..)
@@ -14,14 +15,16 @@ module File.CTFReader
   ) where
 
 import Control.Applicative ((<|>))
-import Data.Attoparsec.ByteString.Char8
+import Data.Attoparsec.Lazy
 import Data.Vector (Vector)
 import Hammer.VoxBox
-import qualified Data.Attoparsec.ByteString.Char8 as AC
-import qualified Data.ByteString                  as B
-import qualified Data.ByteString.Char8            as BC
-import qualified Data.Vector                      as V
-import qualified Data.Vector.Unboxed              as U
+import qualified Data.Attoparsec.Lazy       as A
+import qualified Data.ByteString.Lazy       as BSL
+import qualified Data.ByteString.Internal   as BS (w2c)
+import qualified Data.Text                  as T
+import qualified Data.Text.Encoding         as TE
+import qualified Data.Vector                as V
+import qualified Data.Vector.Unboxed        as U
 
 import Texture.Orientation (Quaternion, toQuaternion, mkEuler, Deg(..))
 import File.InternalParsers
@@ -102,15 +105,15 @@ data CTFdata
 -- ============================== Parse functions ========================================
 
 -- | Read the input CTF file. Rise an error mesage in case of bad format or acess.
-parseCTF :: String -> IO CTFdata
-parseCTF fileName = do
-  stream <- B.readFile fileName
-  let
-    ebsd = case parseOnly parseCTFdata stream of
-      Left err -> error ("[CTF] Error reading file " ++ fileName ++ "\n\tReason: " ++ show err)
-      Right x  -> x
-  checkDataSize  ebsd
+loadCTF :: BSL.ByteString -> Either String CTFdata
+loadCTF bs = do
+  ebsd <- eitherResult (parse parseCTFdata bs)
+  _ <- checkDataSize ebsd
   return ebsd
+
+-- | Read the input CTF file. Rise an error mesage in case of bad format or acess.
+readFileCTF :: String -> IO (Either String CTFdata)
+readFileCTF fileName = loadCTF <$> BSL.readFile fileName
 
 parseCTFdata :: Parser CTFdata
 parseCTFdata = do
@@ -121,20 +124,20 @@ parseCTFdata = do
   _grid   <- gridParse
   _info   <- parseFields
   _phases <- many1' phaseParse
-  skipWhile (not . isEOL) >> eol
+  skipWhile (not . isEOL . BS.w2c) >> eol
   _points <- many1' (pointParse _grid)
   let _head = CTFinfo _proj _job _auth _info
   return $ CTFdata (V.fromList _points) _grid _head _phases
 
-checkDataSize :: CTFdata -> IO ()
+checkDataSize :: CTFdata -> Either String Int
 checkDataSize CTFdata{..}
-  | V.length nodes == n = putStrLn $ "[CTF] Loaded numbers of points: " ++ show n
-  | otherwise = msg
+  | V.length nodes == n = Right n
+  | otherwise = Left msg
   where
     CTFgrid{..} = grid
     (row, col)  = rowCols
     n = row * col
-    msg = error $ "[CTF] Invalid numbers of points. Expected " ++
+    msg = "[CTF] Invalid numbers of points. Expected " ++
           show n ++ " but found " ++
           show (V.length nodes) ++ ". The grid shape is given by (row, cEven, cOdd) = " ++
           show rowCols
@@ -223,7 +226,9 @@ parseFields = do
   return x
 
 parseField :: Parser String
-parseField = blanks >> (BC.unpack <$> AC.takeWhile (\c -> not (isEOL c) && not (isEOField c)))
+parseField = let
+  isTheEnd = (\c -> not (isEOL c) && not (isEOField c)) . BS.w2c
+  in blanks >> (T.unpack . TE.decodeUtf8 <$> A.takeWhile isTheEnd)
 
 isEOField :: Char -> Bool
 isEOField = (== '\t')
