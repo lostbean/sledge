@@ -28,6 +28,7 @@ module Texture.Symmetry
   , getUniqueSymmVecs
     -- * Misorientation
   , getMisoAngle
+  , getMisoAngleFaster 
     -- * Fundamental zone in Frank-Rodrigues
   , isInRodriFZ
    -- * Custom symmetries
@@ -277,9 +278,12 @@ isInRodriFZ symm = \q -> let
 -- @Euler (-44) 0 0@ in the fundamental zone.
 getMisoAngle :: Symm -> Quaternion -> Quaternion -> Double
 getMisoAngle symm = let
-  foo = getAbsShortOmega . toFZ symm
+  ops = getSymmOps symm
   -- avoiding eta expansion of q1 and q2 to memorize
-  in \q1 q2 -> foo (q2 -#- q1)
+  in \q1 q2 -> getMisoAngleFaster ops q1 q2
+
+getMisoAngleFaster :: U.Vector SymmOp -> Quaternion -> Quaternion -> Double
+getMisoAngleFaster ops q1 q2 = getAbsShortOmega $ getInFZ ops (q2 -#- q1)
 
 -- ================================== Averaging quaternions regarding symmetry ===========================================
 
