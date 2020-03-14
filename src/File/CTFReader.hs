@@ -1,6 +1,7 @@
 {-# LANGUAGE
-    RecordWildCards
+    DeriveGeneric
   , OverloadedStrings
+  , RecordWildCards
   #-}
 -- | Read and load *.ctf files from CTF measure systems.
 module File.CTFReader
@@ -14,9 +15,11 @@ module File.CTFReader
   , CTFdata  (..)
   ) where
 
+import Codec.Serialise (Serialise)
 import Control.Applicative ((<|>))
 import Data.Attoparsec.Lazy
 import Data.Vector (Vector)
+import GHC.Generics
 import Hammer.VoxBox
 import qualified Data.Attoparsec.Lazy       as A
 import qualified Data.ByteString.Lazy       as BSL
@@ -66,7 +69,7 @@ data CTFpoint
   , angulardev   :: {-# UNPACK #-} !Double  -- ^ MAD (mean angular deviation)
   , bandcontrast :: {-# UNPACK #-} !Int     -- ^ BC  (band contrast)
   , bandslope    :: {-# UNPACK #-} !Int     -- ^ BS  (band slope)
-  } deriving Show
+  } deriving (Show, Generic)
 
 -- | Information describing the measuriment.
 data CTFinfo =
@@ -75,7 +78,7 @@ data CTFinfo =
   , jobMode :: String
   , author  :: String
   , info    :: [String]
-  } deriving (Show)
+  } deriving (Show, Generic)
 
 data CTFphase =
   CTFphase
@@ -83,7 +86,7 @@ data CTFphase =
   , latticeCons  :: (Double, Double, Double, Double, Double, Double)
   , materialName :: String
   , phaseInfo    :: [String]
-  } deriving Show
+  } deriving (Show, Generic)
 
 -- | Information about the grid of point. Hexagonal or Square
 data CTFgrid
@@ -91,7 +94,7 @@ data CTFgrid
   { rowCols :: (Int, Int)
   , xystep  :: (Double, Double)
   , origin  :: (Double, Double, Double)
-  } deriving Show
+  } deriving (Show, Generic)
 
 -- | Hold the whole CTF data strcuture
 data CTFdata
@@ -100,7 +103,13 @@ data CTFdata
   , grid     :: CTFgrid
   , ebsdInfo :: CTFinfo
   , phases   :: [CTFphase]
-  } deriving Show
+  } deriving (Show, Generic)
+
+instance Serialise CTFpoint
+instance Serialise CTFinfo
+instance Serialise CTFphase
+instance Serialise CTFgrid
+instance Serialise CTFdata
 
 -- ============================== Parse functions ========================================
 

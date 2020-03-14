@@ -1,5 +1,11 @@
+{-# LANGUAGE
+    DeriveGeneric
+  , OverloadedStrings
+  , RecordWildCards
+  #-}
 module File.EBSD
   ( EBSD
+  , EBSDdata(..)
   , toANG
   , toCTF
   , writeANG
@@ -9,10 +15,13 @@ module File.EBSD
   , readEBSDToVoxBox
   ) where
 
-import Hammer.VoxBox
+import Codec.Serialise (Serialise)
+import GHC.Generics
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Vector          as V
 import qualified Data.Vector.Unboxed  as U
+
+import Hammer.VoxBox
 
 import File.ANGReader as A
 import File.ANGWriter
@@ -30,6 +39,13 @@ instance EBSD ANGdata where
 instance EBSD CTFdata where
   toANG = ctfdata2angdata
   toCTF = id
+
+instance EBSD EBSDdata where
+  toANG (ANG ang) = ang
+  toANG (CTF ctf) = ctfdata2angdata ctf
+
+  toCTF (CTF ctf) = ctf
+  toCTF (ANG ang) = angdata2ctfdata ang
 
 -- =================================== ANG -> CTF ========================================
 
@@ -132,22 +148,32 @@ ctfdata2angdata d = ANGdata
   , A.phases   = map ctfphase2angphase   (C.phases d)
   }
 
--- =================================== Reader ========================================
+-- =================================== Types ========================================
 
-loadEBSD :: BSL.ByteString -> Either ANGdata CTFdata
+data EBSDdata
+  = ANG {angData :: ANGdata}
+  | CTF {ctfData :: CTFdata}
+  deriving (Show, Generic)
+
+instance Serialise EBSDdata
+
+-- =================================== Reader ========================================
+loadEBSD :: BSL.ByteString -> Either String EBSDdata
 loadEBSD bs = let
   msg e1 e2 = "This file is neither a valid ANG file nor a valid CTF file.\n" ++ e1 ++ "\n" ++ e2
   in case loadANG bs of
     Left errANG -> case loadCTF bs of
-      Left errCTF -> error(msg errANG errCTF)
-      Right ang -> Right ang
-    Right ctf -> Left ctf
+      Left errCTF -> Left (msg errANG errCTF)
+      Right ctf -> Right (CTF ctf)
+    Right ang -> Right (ANG ang)
 
-readEBSD :: FilePath -> IO (Either ANGdata CTFdata)
+readEBSD :: FilePath -> IO (Either String EBSDdata)
 readEBSD f = loadEBSD <$> BSL.readFile f
 
-readEBSDToVoxBox :: (U.Unbox a)=> (CTFpoint -> a) -> (ANGpoint -> a) -> Either ANGdata CTFdata -> VoxBox a
-readEBSDToVoxBox fctf fang = either (either error id . flip A.angToVoxBox fang) (flip C.ctfToVoxBox fctf)
+readEBSDToVoxBox :: (U.Unbox a)=> (CTFpoint -> a) -> (ANGpoint -> a) -> EBSDdata -> Either String (VoxBox a)
+readEBSDToVoxBox fctf fang ebsd = case ebsd of
+  ANG ang -> A.angToVoxBox ang fang
+  CTF ctf -> Right (C.ctfToVoxBox ctf fctf)
 
 writeANG :: (EBSD a)=> FilePath -> a -> IO ()
 writeANG f a = renderANGFile f (toANG a)
