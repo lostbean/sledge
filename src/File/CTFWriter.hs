@@ -6,6 +6,7 @@
   #-}
 module File.CTFWriter
   ( renderCTFFile
+  , renderCTF
   ) where
 
 import Blaze.ByteString.Builder
@@ -25,9 +26,10 @@ import           File.CTFReader
 import           Texture.Orientation
 
 renderCTFFile :: String -> CTFdata -> IO ()
-renderCTFFile fileName ang = let
-  txt = toLazyByteString $ renderCTFdata ang
-  in BSL.writeFile fileName txt
+renderCTFFile fileName = BSL.writeFile fileName . renderCTF
+
+renderCTF :: CTFdata -> BSL.ByteString
+renderCTF = toLazyByteString . renderCTFdata
 
 renderCTFdata :: CTFdata -> Builder
 renderCTFdata CTFdata{..} = let

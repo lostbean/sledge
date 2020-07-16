@@ -6,6 +6,7 @@
   #-}
 module File.ANGWriter
   ( renderANGFile
+  , renderANG
   ) where
 
 import Blaze.ByteString.Builder
@@ -24,9 +25,10 @@ import File.ANGReader
 import Texture.Orientation
 
 renderANGFile :: String -> ANGdata -> IO ()
-renderANGFile fileName ang = let
-  txt = toLazyByteString $ renderANGdata ang
-  in BSL.writeFile fileName txt
+renderANGFile fileName = BSL.writeFile fileName . renderANG
+
+renderANG :: ANGdata -> BSL.ByteString
+renderANG = toLazyByteString . renderANGdata
 
 renderANGdata :: ANGdata -> Builder
 renderANGdata ANGdata{..} =
