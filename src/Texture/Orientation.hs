@@ -139,10 +139,10 @@ instance Random Quaternion where
     in (mkQuaternion $ Vec4 q0 q1 q2 q3, gen1)
 
 -- | Angles in degrees.
-newtype Deg = Deg { unDeg :: Double } deriving (Eq, Num, Ord, Generic)
+newtype Deg = Deg { unDeg :: Double } deriving (Eq, Num, Ord, Generic, NFData)
 
 -- | Angles in radians.
-newtype Rad = Rad { unRad :: Double } deriving (Eq, Num, Ord, Generic)
+newtype Rad = Rad { unRad :: Double } deriving (Eq, Num, Ord, Generic, NFData)
 
 instance NearZero Deg where
   epsilon = Deg epsilon 
