@@ -20,6 +20,7 @@ module Texture.ODF
   ) where
 
 import Data.Maybe
+import Hammer.Parallel.Vector (autoParFilter, runEval)
 import Hammer.VTK
 import Linear.Vect
 import qualified Data.BlazeVPtree as VP
@@ -47,20 +48,19 @@ data ODF
 
 
 buildEmptyODF :: Deg -> Symm -> Deg -> ODF
-buildEmptyODF kw symm step
-  = ODF
- { odfIntensity   = U.replicate n 0
- , odfGrid        = qs
- , odfGridSize    = n
- , odfGridStep    = s
- , odfTree        = VP.fromVector qs
- , odfSymm        = symm
- , odfKernelWidth = toAngle (fromAngle kw)
- }
- where
-   n  = U.length qs
-   s  = abs $ round (4 / fromAngle step)
-   qs = U.filter (isInRodriFZ symm) $ genQuaternionGrid s
+buildEmptyODF kw symm step = ODF
+  { odfIntensity   = U.replicate n 0
+  , odfGrid        = qs
+  , odfGridSize    = n
+  , odfGridStep    = s
+  , odfTree        = VP.fromVector qs
+  , odfSymm        = symm
+  , odfKernelWidth = toAngle (fromAngle kw)
+  }
+  where
+    n  = U.length qs
+    s  = abs $ round (4 / fromAngle step)
+    qs = runEval $ autoParFilter (isInRodriFZ symm) (genQuaternionGrid s)
 
 resetODF :: ODF -> ODF
 resetODF odf = odf {odfIntensity = U.replicate (odfGridSize odf) 0}
