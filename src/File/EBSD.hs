@@ -16,6 +16,7 @@ module File.EBSD
   ) where
 
 import Codec.Serialise (Serialise)
+import Control.DeepSeq (NFData)
 import GHC.Generics
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Vector          as V
@@ -156,6 +157,7 @@ data EBSDdata
   deriving (Show, Generic)
 
 instance Serialise EBSDdata
+instance NFData EBSDdata
 
 -- =================================== Reader ========================================
 loadEBSD :: BSL.ByteString -> Either String EBSDdata

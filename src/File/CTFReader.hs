@@ -1,5 +1,6 @@
 {-# LANGUAGE
     DeriveGeneric
+  , BangPatterns
   , OverloadedStrings
   , RecordWildCards
   #-}
@@ -17,6 +18,7 @@ module File.CTFReader
 
 import Codec.Serialise (Serialise)
 import Control.Applicative ((<|>))
+import Control.DeepSeq (NFData, force)
 import Data.Attoparsec.Lazy
 import Data.Vector (Vector)
 import GHC.Generics
@@ -111,6 +113,12 @@ instance Serialise CTFphase
 instance Serialise CTFgrid
 instance Serialise CTFdata
 
+instance NFData CTFpoint
+instance NFData CTFinfo
+instance NFData CTFphase
+instance NFData CTFgrid
+instance NFData CTFdata
+
 -- ============================== Parse functions ========================================
 
 -- | Read the input CTF file. Rise an error mesage in case of bad format or acess.
@@ -157,73 +165,73 @@ phaseParse :: Parser CTFphase
 phaseParse = parser <?> "Failed to parse phase info"
   where
     parser = do
-      phn <- getInfo "Phases" parseInt
+      !phn <- getInfo "Phases" parseInt
       eol
-      lat <- latticeParse
-      mat <- parseField
-      rs  <- parseFields
-      return $ CTFphase phn lat mat rs
+      !lat <- latticeParse
+      !mat <- parseField
+      !rs  <- parseFields
+      return .force $ CTFphase phn lat mat rs
 
 gridParse :: Parser CTFgrid
 gridParse = parser <?> "Failed to parse grid info"
   where
     parser = do
-      row   <- getInfo "XCells" parseInt
-      col   <- getInfo "YCells" parseInt
-      xstep <- getInfo "XStep"  parseFloat
-      ystep <- getInfo "YStep"  parseFloat
-      x     <- getInfo "AcqE1"  parseFloat
-      y     <- getInfo "AcqE2"  parseFloat
-      z     <- getInfo "AcqE3"  parseFloat
-      return $ CTFgrid (row, col) (xstep, ystep) (x, y, z)
+      !row   <- getInfo "XCells" parseInt
+      !col   <- getInfo "YCells" parseInt
+      !xstep <- getInfo "XStep"  parseFloat
+      !ystep <- getInfo "YStep"  parseFloat
+      !x     <- getInfo "AcqE1"  parseFloat
+      !y     <- getInfo "AcqE2"  parseFloat
+      !z     <- getInfo "AcqE3"  parseFloat
+      return . force $ CTFgrid (row, col) (xstep, ystep) (x, y, z)
 
 latticeParse :: Parser (Double, Double, Double, Double, Double, Double)
 latticeParse = parser <?> "Failed to parse lattice parameters"
   where
     parser = do
-      a  <- parseFloat
+      !a  <- parseFloat
       _  <- stringInfo ";"
-      b  <- parseFloat
+      !b  <- parseFloat
       _  <- stringInfo ";"
-      c  <- parseFloat
+      !c  <- parseFloat
       blanks
-      w1 <- parseFloat
+      !w1 <- parseFloat
       _  <- stringInfo ";"
-      w2 <- parseFloat
+      !w2 <- parseFloat
       _  <- stringInfo ";"
-      w3 <- parseFloat
+      !w3 <- parseFloat
       eol
-      return (a, b, c, w1, w2, w3)
+      return . force $ (a, b, c, w1, w2, w3)
 
 pointParse :: CTFgrid -> Parser CTFpoint
 pointParse g = parser <?> "Failed to parse EBSD point"
   where
     parser = do
-      ph   <- parseInt
-      x    <- parseFloat
-      y    <- parseFloat
-      bd   <- parseInt
-      er   <- parseInt
-      phi1 <- parseFloat
-      phi  <- parseFloat
-      phi2 <- parseFloat
-      ma   <- parseFloat
-      bc   <- parseInt
-      bs   <- parseInt
+      !ph   <- parseInt
+      !x    <- parseFloat
+      !y    <- parseFloat
+      !bd   <- parseInt
+      !er   <- parseInt
+      !phi1 <- parseFloat
+      !phi  <- parseFloat
+      !phi2 <- parseFloat
+      !ma   <- parseFloat
+      !bc   <- parseInt
+      !bs   <- parseInt
       eol
-      let rot     = toQuaternion $ mkEuler (Deg phi1) (Deg phi) (Deg phi2)
-          (xi,yi) = getGridPoint g (x, y)
-      return $ CTFpoint ph rot xi yi bd er ma bc bs
+      let !rot       = toQuaternion $ mkEuler (Deg phi1) (Deg phi) (Deg phi2)
+          (!xi, !yi) = getGridPoint g (x, y)
+      return . force $ CTFpoint ph rot xi yi bd er ma bc bs
 
 -- | Calculate colunm position (row,col) from ID sequence
 -- Origin at (1,1)
 getGridPoint :: CTFgrid -> (Double, Double) -> (Int, Int)
 getGridPoint g (x, y) = let
   (xstep, ystep) = xystep g
-  yi = round ((2*y)/ystep) `div` 2
+  yi = round ((2 * y) / ystep) `div` 2
   -- divide for 0.5*xstep to avoid error when round value
   -- ex. round 7.4/5.0 \= round 7.6/5.0;
-  xi = round ((2*x)/xstep) `div` 2
+  xi = round ((2 * x) / xstep) `div` 2
   in (xi, yi)
 
 -- -------------------------------------- Basic parsers ----------------------------------
