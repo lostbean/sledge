@@ -102,6 +102,7 @@ Library
                 , queryforest             >= 0.1
                 , linear-vect             >= 0.2
                 , serialise               >= 0.2
+                , parallel                >= 3.2
 
   exposed-modules:  Texture.Symmetry
                     Texture.Orientation

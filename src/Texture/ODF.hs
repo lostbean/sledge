@@ -12,6 +12,7 @@ module Texture.ODF
   , buildEmptyODF
   , resetODF
   , addPoints
+  , addPointsParallel
   , addPointsWithConst
   , integrateODFwith
   , getODFeval
@@ -73,6 +74,10 @@ addPointsWithConst qs k customWidth odf@ODF{..} = odf { odfIntensity = is }
 addPoints :: U.Vector Quaternion -> ODF -> ODF
 addPoints qs odf@ODF{..} = odf { odfIntensity = is }
   where is = addManyKernels odfKernelWidth odfTree qs odfIntensity
+
+addPointsParallel :: U.Vector Quaternion -> ODF -> ODF
+addPointsParallel qs odf@ODF{..} = odf { odfIntensity = is }
+  where is = addManyKernelsParallel odfKernelWidth odfTree qs odfIntensity
 
 getODFeval :: ODF -> (Quaternion -> Double)
 getODFeval ODF{..} = maybe 0 (\(i, _, _) -> odfIntensity U.! i) . func
