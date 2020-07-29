@@ -149,9 +149,8 @@ parseANGdata = do
   c <- skipCommentLine >> getInfo "# SCANID:"   parseText
   skipCommentLine
   let head_info = ANGinfo w p o s c
-  point_list <- {-# SCC "points" #-} many1 (pointParse grid_info)
+  point_list <- many1 (pointParse grid_info)
   return $ ANGdata (V.fromList point_list) grid_info head_info phases_info
-{-# SCC parseANGdata "parseANGdata" #-}
 
 checkDataShape :: ANGdata -> Either String String
 checkDataShape ANGdata{..}
