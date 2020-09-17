@@ -95,10 +95,13 @@ getSymmAxes sym = case sym of
 
     , mkSymmAxis (Vec3   0    0    1 ) 6
 
-    , mkSymmAxis (Vec3   1    1    1 ) 3
-    , mkSymmAxis (Vec3   1  (-1)   1 ) 3
-    , mkSymmAxis (Vec3   1    1  (-1)) 3
-    , mkSymmAxis (Vec3 (-1)   1    1 ) 3 ]
+    , mkSymmAxis (Vec3   1       0      0 ) 2
+    , mkSymmAxis (Vec3   0     (-1)     0 ) 2
+    , mkSymmAxis (Vec3   sin30   cos30  0 ) 2
+    , mkSymmAxis (Vec3   cos30   sin30  0 ) 2
+    , mkSymmAxis (Vec3   sin30 (-cos30) 0 ) 2
+    , mkSymmAxis (Vec3   cos30 (-sin30) 0 ) 2
+    ]
 
   Cubic -> U.fromList
     [ mkSymmAxis (Vec3   1    0    0 ) 1  -- id rotation
@@ -119,6 +122,10 @@ getSymmAxes sym = case sym of
     , mkSymmAxis (Vec3   1  (-1)   1 ) 3
     , mkSymmAxis (Vec3 (-1)   1    1 ) 3
     ]
+  where
+    sin30 = 0.5
+    cos30 = sqrt 3 / 2
+
 
 -- | Calculates the symmetric operators for given symmetric axis and the number of
 -- symmetric equivalents (number of folds). Number of folds lower than two results
