@@ -1,5 +1,6 @@
 {-# LANGUAGE
-    NamedFieldPuns
+    DeriveGeneric
+  , NamedFieldPuns
   , RecordWildCards
   , GeneralizedNewtypeDeriving
   , TypeFamilies
@@ -47,6 +48,7 @@ import Control.Monad
 import Data.Function (on)
 import Data.Maybe (isNothing)
 import Data.Vector.Unboxed.Deriving
+import GHC.Generics
 import Linear.Vect
 import qualified Data.List           as L
 import qualified Data.Vector         as V
@@ -59,7 +61,7 @@ import Texture.Orientation
 -- | Defines the an axis of symmetry given an axis 'Vec3' and the number of folds.
 newtype SymmAxis
   = SymmAxis (Vec3D, Int)
-  deriving (Eq, Show)
+  deriving (Eq, Generic, Show)
 
 -- | Defines a fundamental zone plane in Frank-Rodrigues space
 newtype FZPlane
@@ -70,7 +72,7 @@ newtype FZPlane
 data Symm = Cubic
           | Hexagonal
           | Custom String [ SymmAxis ]
-          deriving (Show, Eq)
+          deriving (Eq, Generic, Show)
 
 -- | Symmetric operators that transforms one orientation to its equivalent.
 newtype SymmOp =
