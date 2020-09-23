@@ -13,6 +13,9 @@ module File.EBSD
   , loadEBSD
   , readEBSD
   , readEBSDToVoxBox
+  , getEBSDmeta
+  , EBSDmeta(..)
+  , EBSDphase(..)
   ) where
 
 import Codec.Serialise (Serialise)
@@ -159,6 +162,20 @@ data EBSDdata
 instance Serialise EBSDdata
 instance NFData EBSDdata
 
+data EBSDphase
+  = EBSDphase
+  { numID :: Int
+  , name  :: String
+  } deriving (Show, Generic)
+
+data EBSDmeta
+  = EBSDmeta
+  { rows :: Int
+  , cols :: Int
+  , xystep :: (Double, Double)
+  , phases :: [EBSDphase]
+  } deriving (Show, Generic)
+
 -- =================================== Reader ========================================
 loadEBSD :: BSL.ByteString -> Either String EBSDdata
 loadEBSD bs = let
@@ -182,3 +199,16 @@ writeANG f a = renderANGFile f (toANG a)
 
 writeCTF :: (EBSD a)=> FilePath -> a -> IO ()
 writeCTF f a = renderCTFFile f (toCTF a)
+
+getEBSDmeta :: EBSDdata -> EBSDmeta
+getEBSDmeta ebsd = case ebsd of
+  ANG ang -> let
+    (rows, cols, _) = A.rowCols . A.grid $ ang
+    xy = A.xystep . A.grid $ ang
+    phases = map (\ph -> EBSDphase (A.phase ph) (A.materialName ph)) $ A.phases ang
+    in EBSDmeta rows cols xy phases
+  CTF ctf -> let
+    (rows, cols) = C.rowCols . C.grid $ ctf
+    xy = C.xystep . C.grid $ ctf
+    phases = map (\ph -> EBSDphase (C.phaseID ph) (C.materialName ph)) $ C.phases ctf
+    in EBSDmeta rows cols xy phases
