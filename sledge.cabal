@@ -1,137 +1,152 @@
-name:           sledge
-version:        0.4
-cabal-version:  >= 1.8
-build-type:     Simple
-license:        GPL-3
-license-file:   LICENSE
-maintainer:     Edgar Gomes de Araujo
-stability:      experimental
+name:          sledge
+version:       0.4
+cabal-version: >=1.8
+build-type:    Simple
+license:       GPL-3
+license-file:  LICENSE
+maintainer:    Edgar Gomes de Araujo
+stability:     experimental
 homepage:
 package-url:
-bug-reports:    talktoedgar@gmail.com
-synopsis:       Basic tools for texture in polycrystal materials
-description: Library with tools for metalurgical research. Includes:
- - Rotation representation and opreretions
- - Texture representation by Spherical Harmonics and Bingham distribution.
- Aim of this library is also performance and multi-core ready.
-category:       Math
-author:         Edgar Gomes de Araujo
+bug-reports:   talktoedgar@gmail.com
+synopsis:      Basic tools for texture in polycrystal materials
+description:
+  Library with tools for metalurgical research. Includes:
+  - Rotation representation and opreretions
+  - Texture representation by Spherical Harmonics and Bingham distribution.
+  Aim of this library is also performance and multi-core ready.
+
+category:      Math
+author:        Edgar Gomes de Araujo
 
 flag tests
-    description: Exectable tests for visual check.
-    default:     False
+  description: Exectable tests for visual check.
+  default:     False
 
 executable test-kernel-sampling
-    main-is:        TestKernelSampling.hs
-    hs-source-dirs: test
-    build-depends: sledge
-                   , hammer
-                   , queryforest
-                   , base
-                   , vector
-                   , random
-    if flag(tests)
-       buildable: True
-       ghc-options: -Wall -O2 -rtsopts -threaded
-    else
-       buildable: False
+  main-is:        TestKernelSampling.hs
+  hs-source-dirs: test
+  build-depends:
+      base
+    , hammer
+    , queryforest
+    , random
+    , sledge
+    , vector
 
-executable test-odf
-    main-is:        TestODF.hs
-    hs-source-dirs: test
-    build-depends: sledge
-                 , hammer
-                 , queryforest
-                 , base
-                 , vector
-                 , random
-    if flag(tests)
-       buildable: True
-       ghc-options: -Wall -O2 -rtsopts -threaded
-    else
-       buildable: False
-
-executable test-sampler
-    main-is:        TestSampler.hs
-    hs-source-dirs: test
-    build-depends: sledge
-                 , hammer
-                 , queryforest
-                 , base
-                 , vector
-                 , random
-    if flag(tests)
-       buildable: True
-       ghc-options: -Wall -O2 -rtsopts -threaded
-    else
-       buildable: False
-
-test-suite test
-    type:           exitcode-stdio-1.0
-    main-is:        Main.hs
-    hs-source-dirs: test
-    build-depends: sledge
-                 , hammer
-                 , queryforest
-                 , base
-                 , QuickCheck
-                 , vector
-                 , random
-                 , tasty
-                 , tasty-hunit
-                 , tasty-quickcheck
-    other-modules: TestKernel
-                   TestTexture
+  if flag(tests)
+    buildable:   True
     ghc-options: -Wall -O2 -rtsopts -threaded
 
-Library
-  build-depends:  base                    == 4.*
-                , hammer                  >= 0.4
-                , bytestring              >= 0.10
-                , text                    >= 0.11
-                , binary                  >= 0.7
-                , vector                  >= 0.10
-                , vector-binary-instances >= 0.2
-                , vector-th-unbox         >= 0.2.1
-                , primitive               >= 0.5
-                , random                  >= 1.0
-                , deepseq                 >= 1.2
-                , attoparsec              >= 0.8
-                , blaze-builder           >= 0.3
-                , queryforest             >= 0.1
-                , linear-vect             >= 0.2
+  else
+    buildable: False
 
-  exposed-modules:  Texture.Symmetry
-                    Texture.Orientation
-                    Texture.SphereProjection
-                    Texture.TesseractGrid
-                    Texture.IPF
-                    Texture.Bingham
-                    Texture.HyperSphere
-                    Texture.Sampler
-                    Texture.IsoSphere
-                    Texture.Kernel
-                    Texture.ODF
-                    Texture.DDF
+executable test-odf
+  main-is:        TestODF.hs
+  hs-source-dirs: test
+  build-depends:
+      base
+    , hammer
+    , queryforest
+    , random
+    , sledge
+    , vector
 
-                    File.EBSD
-                    File.ANGReader
-                    File.ANGWriter
-                    File.CTFReader
-                    File.CTFWriter
-                    File.ODFReader
+  if flag(tests)
+    buildable:   True
+    ghc-options: -Wall -O2 -rtsopts -threaded
 
-  other-modules:    Texture.Bingham.Constant
-                    File.InternalParsers
+  else
+    buildable: False
 
-  exposed:        True
-  buildable:      True
-  hs-source-dirs: src
-  ghc-options:    -O2
-                  -rtsopts
-                  -Wall
-                  -funbox-strict-fields
-                  -threaded
-                  -- -eventlog
-                  -auto-all
-                  -caf-all
+executable test-sampler
+  main-is:        TestSampler.hs
+  hs-source-dirs: test
+  build-depends:
+      base
+    , hammer
+    , queryforest
+    , random
+    , sledge
+    , vector
+
+  if flag(tests)
+    buildable:   True
+    ghc-options: -Wall -O2 -rtsopts -threaded
+
+  else
+    buildable: False
+
+test-suite test
+  type:           exitcode-stdio-1.0
+  main-is:        Main.hs
+  hs-source-dirs: test
+  build-depends:
+      base
+    , hammer
+    , linear-vect
+    , queryforest
+    , QuickCheck
+    , random
+    , sledge
+    , tasty
+    , tasty-hunit
+    , tasty-quickcheck
+    , vector
+
+  other-modules:
+    TestKernel
+    TestTexture
+
+  ghc-options:    -Wall -O2 -rtsopts -threaded
+
+library
+  build-depends:
+      attoparsec               >=0.8
+    , base                     >=4     && <5
+    , binary                   >=0.7
+    , blaze-builder            >=0.3
+    , bytestring               >=0.10
+    , deepseq                  >=1.2
+    , hammer                   >=0.4
+    , linear-vect              >=0.2
+    , primitive                >=0.5
+    , queryforest              >=0.1
+    , random                   >=1.0
+    , text                     >=0.11
+    , vector                   >=0.10
+    , vector-binary-instances  >=0.2
+    , vector-th-unbox          >=0.2.1
+
+  exposed-modules:
+    File.ANGReader
+    File.ANGWriter
+    File.CTFReader
+    File.CTFWriter
+    File.EBSD
+    File.ODFReader
+    Texture.Bingham
+    Texture.DDF
+    Texture.HyperSphere
+    Texture.IPF
+    Texture.IsoSphere
+    Texture.Kernel
+    Texture.ODF
+    Texture.Orientation
+    Texture.Sampler
+    Texture.SphereProjection
+    Texture.Symmetry
+    Texture.TesseractGrid
+
+  other-modules:
+    File.InternalParsers
+    Texture.Bingham.Constant
+
+  exposed:         True
+  buildable:       True
+  hs-source-dirs:  src
+  ghc-options:
+    -O2 -rtsopts -Wall -funbox-strict-fields -threaded -auto-all
+    -caf-all
+
+-- -eventlog
