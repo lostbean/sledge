@@ -29,6 +29,7 @@ executable test-kernel-sampling
   build-depends:
       base
     , hammer
+    , linear-vect
     , queryforest
     , random
     , sledge
@@ -47,6 +48,7 @@ executable test-odf
   build-depends:
       base
     , hammer
+    , linear-vect
     , queryforest
     , random
     , sledge
@@ -65,6 +67,7 @@ executable test-sampler
   build-depends:
       base
     , hammer
+    , linear-vect
     , queryforest
     , random
     , sledge
