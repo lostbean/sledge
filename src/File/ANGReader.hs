@@ -30,7 +30,6 @@ angToVoxBox ANGdata{..} func
     | not hexGrid = Right box
     | otherwise = Left "[ANG] Can't produce VoxBox from ANG file with hexagonal grid."
   where
-    ANGinfo{..} = ebsdInfo
     ANGgrid{..} = grid
     (xstep, ystep) = xystep
     (row, col_even, _) = rowCols

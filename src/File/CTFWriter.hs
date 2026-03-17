@@ -11,7 +11,6 @@ import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Char8
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
-import Data.Monoid ((<>))
 import Data.Text (Text)
 import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy.Builder (toLazyText)

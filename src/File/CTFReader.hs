@@ -30,7 +30,6 @@ import Texture.Orientation (Deg (..), Quaternion, mkEuler, toQuaternion)
 ctfToVoxBox :: (U.Unbox a) => CTFdata -> (CTFpoint -> a) -> VoxBox a
 ctfToVoxBox CTFdata{..} func = box
   where
-    CTFinfo{..} = ebsdInfo
     CTFgrid{..} = grid
     (xstep, ystep) = xystep
     (row, col) = rowCols

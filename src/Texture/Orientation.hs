@@ -641,9 +641,13 @@ aproxToIdealAxis (Vec3 x y z) err =
         ratio = flip approxRational err
         intValues = zipWith (\n d -> fromIntegral $ n * (div mmc d)) ns ds
         nzIntVaules = filter (/= 0) intValues
-        [x', y', z'] = case nzIntVaules of
-            [] -> intValues
-            _ -> map (`div` mdc) intValues
+        (x', y', z') = case nzIntVaules of
+            [] -> case intValues of
+                [a, b, c] -> (a, b, c)
+                _ -> error "unexpected list length in aproxToIdealAxis"
+            _ -> case map (`div` mdc) intValues of
+                [a, b, c] -> (a, b, c)
+                _ -> error "unexpected list length in aproxToIdealAxis"
      in
         (x', y', z')
 

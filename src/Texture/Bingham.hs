@@ -39,7 +39,7 @@ import Hammer.VTK
 import Linear.Decomp
 import Linear.Mat
 import Linear.Vect
-import System.Random (newStdGen, randomIO, randoms)
+import System.Random (randomIO)
 
 import Texture.Bingham.Constant
 import Texture.HyperSphere
@@ -87,11 +87,13 @@ mkBingham x1 x2 x3 =
         -- find the highest concentration and set it as the mode and equal zero
         -- therefore all others concentrations are negative
         mode = snd $ last zd
-        [(z1, d1), (z2, d2), (z3, d3)] =
+        ((z1, d1), (z2, d2), (z3, d3)) =
             let
                 zmax = fst $ last zd
              in
-                take 3 $ map (\(zi, di) -> (zi - zmax, di)) zd
+                case take 3 $ map (\(zi, di) -> (zi - zmax, di)) zd of
+                    [p, q, r] -> (p, q, r)
+                    _ -> error "unexpected list length in mkBingham"
 
         -- add check orthogonality
         m = Mat4 (quaterVec d1) (quaterVec d2) (quaterVec d3) (quaterVec mode)
@@ -303,8 +305,12 @@ decomposeScatter scatter =
         xs = zip [_1 ex, _2 ex, _3 ex, _4 ex] [_R1 v, _R2 v, _R3 v, _R4 v]
         (sortex, sortev) = unzip $ L.sortBy (\a b -> compare (fst a) (fst b)) xs
         -- v4 x4 will be axis with the highest eigenvalue (the highest concentration or mode)
-        [v1, v2, v3, v4] = sortev
-        [x1, x2, x3, x4] = sortex
+        (v1, v2, v3, v4) = case sortev of
+            [a, b, c, d] -> (a, b, c, d)
+            _ -> error "unexpected list length in decomposeScatter"
+        (x1, x2, x3, x4) = case sortex of
+            [a, b, c, d] -> (a, b, c, d)
+            _ -> error "unexpected list length in decomposeScatter"
      in
         (Vec4 x1 x2 x3 x4, Mat4 v1 v2 v3 v4)
 
@@ -416,39 +422,8 @@ renderBinghamToEuler step (np1, np, np2) dist =
      in
         mkSPVTK "Euler_ODF" (np1, np, np2) orig spc [attr]
 
--- ====================================== Test ===========================================
-
 writeQuater :: (RenderElemVTK a) => String -> VTK a -> IO ()
 writeQuater name = writeUniVTKfile ("/home/edgar/Desktop/" ++ name ++ ".vtu") True
-
-testDist :: Bingham
-testDist =
-    let
-        d1 = (30, mkQuaternion (Vec4 0 0 1 0))
-        d2 = (2, mkQuaternion (Vec4 0 1 0 0))
-        d3 = (1, mkQuaternion (Vec4 1 0 0 0))
-        dist = mkBingham d1 d2 d3
-     in
-        dist
-
-testSample :: Int -> IO ()
-testSample n =
-    let
-        d1 = (5, mkQuaternion (Vec4 0 0 1 0))
-        d2 = (2, mkQuaternion (Vec4 0 0 0 (-1)))
-        d3 = (1, mkQuaternion (Vec4 0 1 0 0))
-        dist = mkBingham d1 d2 d3
-        prod = bingProduct dist dist
-     in
-        do
-            a <- sampleBingham dist n
-            putStrLn $ show dist
-            putStrLn $ showPretty $ scatter dist
-            putStrLn $ showPretty $ getScatterMatrix $ U.fromList a
-            writeQuater "Bing-PDF-testSample" $ renderBingham dist
-            writeQuater "Bing-PDFProduct-testSample" $ renderBingham prod
-            writeQuater "Bing-Samples-testSample" $ renderPoints a
-            writeQuater "Euler-PDF-testSample" $ renderBinghamToEuler (Deg 5) (72, 36, 72) dist
 
 -- | Sample and fit the sampled quaternions.
 testSampleFit :: Double -> Double -> Double -> IO ()
@@ -475,21 +450,3 @@ testSampleFit z1 z2 z3 =
             writeQuater "Bing-PDF-Intial" $ renderBingham dist
             writeQuater "Bing-PDF-Final" $ renderBingham dist2
             writeQuater "Bing-Samples-testSampleFit" $ renderPoints a
-
--- | Use Monte Carlo integration to check to normalization of the distribution.
-testNormalization :: Double -> Double -> Double -> IO Double
-testNormalization z1 z2 z3 =
-    let
-        d1 = (z1, mkQuaternion (Vec4 0 0 1 0))
-        d2 = (z2, mkQuaternion (Vec4 0 1 0 0))
-        d3 = (z3, mkQuaternion (Vec4 0 0 0 1))
-        dist = mkBingham d1 d2 d3
-     in
-        do
-            gen <- newStdGen
-            let
-                n = 1000000
-                qs = take n $ randoms gen
-                s = sum $ map (binghamPDF dist) qs
-                v = surface_area_sphere 3
-            return $ (v / fromIntegral n) * s
