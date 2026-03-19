@@ -473,36 +473,45 @@ instance Rot RotMatrix where
             RotMatrix (Mat3 (Vec3 g11 g12 g13) (Vec3 g21 g22 g23) (Vec3 g31 g32 g33))
 
 mat2quat :: RotMatrix -> Quaternion
-mat2quat (RotMatrix m)
-    | q0 > 0 =
+mat2quat (RotMatrix (Mat3 (Vec3 g11 g12 g13) (Vec3 g21 g22 g23) (Vec3 g31 g32 g33)))
+    | tr > 0 =
         let
-            q1 = (g23 - g32) / (4 * q0)
-            q2 = (g31 - g13) / (4 * q0)
-            q3 = (g12 - g21) / (4 * q0)
+            s = sqrt (tr + 1) * 2
+            q0 = 0.25 * s
+            q1 = (g23 - g32) / s
+            q2 = (g31 - g13) / s
+            q3 = (g12 - g21) / s
          in
             mkUnsafeQuaternion $ Vec4 q0 q1 q2 q3
-    | q1_0 > q2_0 && q1_0 > q3_0 =
+    | g11 > g22 && g11 > g33 =
         let
-            v = Vec4 q0 q1_0 (sgn g21 q2_0) (sgn g31 q3_0)
+            s = sqrt (1 + g11 - g22 - g33) * 2
+            q0 = (g23 - g32) / s
+            q1 = 0.25 * s
+            q2 = (g21 + g12) / s
+            q3 = (g31 + g13) / s
          in
-            mkUnsafeQuaternion v
-    | q2_0 > q1_0 && q2_0 > q3_0 =
+            mkUnsafeQuaternion $ Vec4 q0 q1 q2 q3
+    | g22 > g33 =
         let
-            v = Vec4 q0 (sgn g12 q1_0) q2_0 (sgn g32 q3_0)
+            s = sqrt (1 + g22 - g11 - g33) * 2
+            q0 = (g31 - g13) / s
+            q1 = (g21 + g12) / s
+            q2 = 0.25 * s
+            q3 = (g32 + g23) / s
          in
-            mkUnsafeQuaternion v
+            mkUnsafeQuaternion $ Vec4 q0 q1 q2 q3
     | otherwise =
         let
-            v = Vec4 q0 (sgn g13 q1_0) (sgn g23 q2_0) q3_0
+            s = sqrt (1 + g33 - g11 - g22) * 2
+            q0 = (g12 - g21) / s
+            q1 = (g31 + g13) / s
+            q2 = (g32 + g23) / s
+            q3 = 0.25 * s
          in
-            mkUnsafeQuaternion v
+            mkUnsafeQuaternion $ Vec4 q0 q1 q2 q3
   where
-    sgn ref x = if ref >= 0 then x else -x
-    (Mat3 (Vec3 g11 g12 g13) (Vec3 g21 g22 g23) (Vec3 g31 g32 g33)) = m
-    q0 = 0.5 * (sqrt $ g11 + g22 + g33 + 1)
-    q1_0 = sqrt $ (g11 + 1) / 2
-    q2_0 = sqrt $ (g22 + 1) / 2
-    q3_0 = sqrt $ (g33 + 1) / 2
+    tr = g11 + g22 + g33
 
 -- ================================== Other functions ==================================
 

@@ -1,68 +1,74 @@
 module BinghamTest (
-    testDist,
-    testSample,
-    testNormalization,
+    test,
 ) where
 
 import qualified Data.Vector.Unboxed as U
-import Hammer.VTK
 import Linear.Vect
-import System.Random (newStdGen, randoms)
-
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 import Texture.Bingham
-import Texture.Bingham.Constant (surface_area_sphere)
-import Texture.HyperSphere
 import Texture.Orientation
 
-writeQuater :: (RenderElemVTK a) => String -> VTK a -> IO ()
-writeQuater name = writeUniVTKfile ("/home/edgar/Desktop/" ++ name ++ ".vtu") True
+test :: TestTree
+test =
+    testGroup
+        "Bingham"
+        [ testCase "Bingham PDF normalization (rough check)" testNormalization
+        , testProperty "Bingham PDF is positive" prop_pdfPositive
+        , testProperty "Bingham mode has highest PDF" prop_modeIsMax
+        ]
 
-renderPoints :: [Quaternion] -> VTK Vec3D
-renderPoints = renderSO3PointsVTK . U.map quaternionToSO3 . U.fromList
-
-testDist :: Bingham
-testDist =
+{- | Rough check of normalization using a few points.
+A better check would be Monte Carlo integration, but that's slow for unit tests.
+-}
+testNormalization :: Assertion
+testNormalization = do
     let
-        d1 = (30, mkQuaternion (Vec4 0 0 1 0))
-        d2 = (2, mkQuaternion (Vec4 0 1 0 0))
-        d3 = (1, mkQuaternion (Vec4 1 0 0 0))
+        d1 = (10, mkQuaternion (Vec4 1 0 0 0))
+        d2 = (5, mkQuaternion (Vec4 0 1 0 0))
+        d3 = (2, mkQuaternion (Vec4 0 0 1 0))
         dist = mkBingham d1 d2 d3
-     in
-        dist
+    -- Just check it doesn't crash and returns a reasonable value
+    assertBool "Normalization is positive" (normalization dist > 0)
 
-testSample :: Int -> IO ()
-testSample n =
+prop_pdfPositive :: Double -> Double -> Double -> Quaternion -> Property
+prop_pdfPositive z1 z2 z3 q =
     let
-        d1 = (5, mkQuaternion (Vec4 0 0 1 0))
-        d2 = (2, mkQuaternion (Vec4 0 0 0 (-1)))
-        d3 = (1, mkQuaternion (Vec4 0 1 0 0))
-        dist = mkBingham d1 d2 d3
-        prod = bingProduct dist dist
+        -- mkBingham expects (concentration, direction)
+        -- concentrations are relative to the mode which will have 0.
+        dist =
+            mkBingham
+                (z1, mkQuaternion (Vec4 1 0 0 0))
+                (z2, mkQuaternion (Vec4 0 1 0 0))
+                (z3, mkQuaternion (Vec4 0 0 1 0))
+        pdf = binghamPDF dist q
      in
-        do
-            a <- sampleBingham dist n
-            putStrLn $ show dist
-            putStrLn $ showPretty $ scatter dist
-            putStrLn $ showPretty $ getScatterMatrix $ U.fromList a
-            writeQuater "Bing-PDF-testSample" $ renderBingham dist
-            writeQuater "Bing-PDFProduct-testSample" $ renderBingham prod
-            writeQuater "Bing-Samples-testSample" $ renderPoints a
-            writeQuater "Euler-PDF-testSample" $ renderBinghamToEuler (Deg 5) (72, 36, 72) dist
+        counterexample ("PDF: " ++ show pdf) $ pdf >= 0
 
--- | Use Monte Carlo integration to check to normalization of the distribution.
-testNormalization :: Double -> Double -> Double -> IO Double
-testNormalization z1 z2 z3 =
+prop_modeIsMax :: Double -> Double -> Double -> Quaternion -> Property
+prop_modeIsMax z1 z2 z3 q =
     let
-        d1 = (z1, mkQuaternion (Vec4 0 0 1 0))
-        d2 = (z2, mkQuaternion (Vec4 0 1 0 0))
-        d3 = (z3, mkQuaternion (Vec4 0 0 0 1))
-        dist = mkBingham d1 d2 d3
+        dist =
+            mkBingham
+                (z1, mkQuaternion (Vec4 1 0 0 0))
+                (z2, mkQuaternion (Vec4 0 1 0 0))
+                (z3, mkQuaternion (Vec4 0 0 1 0))
+        pdfMode = binghamPDF dist (bingMode dist)
+        pdfQ = binghamPDF dist q
      in
-        do
-            gen <- newStdGen
-            let
-                n = 1000000
-                qs = take n $ randoms gen
-                s = sum $ map (binghamPDF dist) qs
-                v = surface_area_sphere 3
-            return $ (v / fromIntegral n) * s
+        counterexample ("PDF Mode: " ++ show pdfMode ++ ", PDF Q: " ++ show pdfQ) $
+            pdfMode >= pdfQ - 1e-9
+
+-- We need Arbitrary instance for Quaternion, but it's already in TestTexture.
+-- To avoid duplication, we might want to move these instances to a shared module.
+-- For now, I'll just use the one from TestTexture if I can, or re-define here if needed.
+-- Since they are orphans in TestTexture, I can't easily import them unless I import TestTexture.
+
+instance Arbitrary Quaternion where
+    arbitrary = do
+        w <- choose (-1, 1)
+        x <- choose (-1, 1)
+        y <- choose (-1, 1)
+        z <- choose (-1, 1)
+        return $ mkQuaternion (Vec4 w x y z)

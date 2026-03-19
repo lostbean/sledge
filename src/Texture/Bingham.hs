@@ -98,7 +98,7 @@ mkBingham x1 x2 x3 =
         -- add check orthogonality
         m = Mat4 (quaterVec d1) (quaterVec d2) (quaterVec d3) (quaterVec mode)
         z = Vec4 z1 z2 z3 0
-        c = m .*. (diag z) .*. (transpose m)
+        c = (transpose m) .*. (diag z) .*. m
         -- space of 3-sphere (S3 c R4)
         (f, (dz1, dz2, dz3, _)) = computeAllF z1 z2 z3 0
         dF = DFDzx dz1 dz2 dz3
