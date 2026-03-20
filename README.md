@@ -1,334 +1,100 @@
 # sledge
 
-**Basic tools for crystallographic texture analysis in polycrystalline materials**
+Crystallographic texture analysis for polycrystalline materials.
 
-sledge is a Haskell library for metallurgical texture research. It provides orientation representation and operations, texture representation via kernel density estimation and Bingham distributions, crystal symmetry handling, EBSD data file I/O, and sampling algorithms for orientation distribution functions (ODFs).
+## What is this?
 
-## Overview
+When a metal is processed (rolled, forged, heat-treated), its crystal grains develop preferred orientations -- this is called *texture*. Texture profoundly affects material properties: strength, ductility, magnetic behavior, and corrosion resistance all depend on how grains are oriented. `sledge` is a Haskell library for representing, analyzing, and modeling crystallographic texture.
 
-sledge addresses three core problems in computational texture analysis:
+## What does it provide?
 
-1. **Orientation representation** -- converting between quaternions, Euler angles, axis-angle pairs, Rodrigues vectors, and rotation matrices, with full support for composition, inversion, misorientation, and interpolation.
-2. **Texture modeling** -- constructing orientation distribution functions (ODFs) and direction distribution functions (DDFs) from EBSD measurements using kernel density estimation on vantage-point trees, or fitting parametric Bingham distributions via maximum likelihood estimation.
-3. **EBSD data I/O** -- reading, writing, and converting between the ANG (TSL/OIM) and CTF (Oxford/HKL) file formats, as well as reading discrete ODF grid files.
+### Orientation representation
 
-## Modules
+A crystal orientation is a rotation that maps the crystal's coordinate system onto the sample's coordinate system. Different communities and software tools prefer different representations. `sledge` supports all five standard representations with full interconversion:
 
-### Orientation and Rotation
+- **Quaternions** -- the primary internal representation. Unit quaternions (4D vectors of length 1) offer singularity-free rotation composition and smooth interpolation (SLERP). They are compact and numerically well-behaved.
+- **Euler angles** (Bunge convention) -- three angles (phi1, PHI, phi2) describing sequential rotations around Z, X', Z''. The most common representation in metallurgical literature, but prone to gimbal lock.
+- **Axis-angle** -- a rotation axis (unit vector) and an angle. Intuitive but not unique.
+- **Rodrigues vectors** -- the rotation axis scaled by the tangent of half the angle. Useful because the fundamental zone (the region of unique orientations) is a polyhedron in Rodrigues space.
+- **Rotation matrices** -- 3x3 orthonormal matrices. Straightforward for vector rotation, but redundant (9 numbers for 3 degrees of freedom).
 
-#### `Texture.Orientation`
+### Crystal symmetry
 
-The central module. Defines orientation representations and operations following the convention e1 -> RD, e2 -> TD, e3 -> ND.
+Crystal symmetry means that many different rotations produce the same physical crystal orientation. For example, cubic crystals (like iron, aluminum, copper) have 24 symmetry operators -- meaning each physical orientation corresponds to 24 equivalent quaternions. `sledge` provides symmetry group definitions (cubic, hexagonal, custom), fundamental zone computation, and misorientation calculation accounting for symmetry.
 
-**Key types:**
+### Orientation Distribution Functions (ODFs)
 
-- `Quaternion` -- Unit quaternion (the primary internal representation). Unboxed-vector derivable, with a `Random` instance using the Shoemake uniform random rotation algorithm.
-- `Euler` -- Bunge-convention Euler angles (phi1, PHI, phi2) with sequence Z-X'-Z''.
-- `AxisPair` -- Axis-angle representation (normalized direction + angle in radians).
-- `Rodrigues` -- Frank-Rodrigues vector representation.
-- `RotMatrix` -- 3x3 orthonormal rotation matrix.
-- `Deg`, `Rad` -- Type-safe angle wrappers with an `Angle` typeclass for conversion.
+An ODF describes the probability density of crystal orientations in a polycrystal. Given a set of measured orientations (e.g., from an EBSD scan of thousands of grains), `sledge` builds an ODF by placing Gaussian kernels at each measured orientation on a discrete grid in Rodrigues-Frank space. A vantage-point tree (from `queryforest`) indexes the grid for efficient neighbor lookup, so only nearby points (within 3 standard deviations) contribute to each kernel.
 
-**Key typeclass:**
+### Bingham distributions
 
-- `Rot a` -- Defines `(#<=)` (composition), `(-#-)` (crystal-frame misorientation), `(-@-)` (sample-frame misorientation), `invert`, `zerorot`, `toQuaternion`, `fromQuaternion`, and `getOmega`. All five representations are instances.
+The Bingham distribution is a probability distribution on the 3-sphere (the space of unit quaternions) that naturally models crystallographic texture. It is parameterized by three concentration values and three direction vectors, which together describe an ellipsoidal probability density on the orientation sphere.
 
-**Key functions:**
+- **Fitting** via maximum likelihood estimation: compute the scatter matrix of observed quaternions, eigendecompose to get principal directions, then optimize concentration parameters using BFGS
+- **Normalization** via the saddle-point approximation of Kume and Wood (2005/2007) -- the Bingham normalization constant has no closed form, so a numerical approximation is necessary
+- **Sampling** via Metropolis-Hastings with an angular central Gaussian proposal distribution
 
-- `activeVecRotation`, `passiveVecRotation` -- Rotate a vector actively or passively by a quaternion.
-- `quaterInterpolation` -- SLERP interpolation between two quaternions.
-- `averageQuaternion` -- Mean orientation using Markley's eigenvector method on the scatter matrix.
-- `composeQ0` -- Fast computation of only the q0 component (used for fast misorientation angle queries).
+### Inverse Pole Figure (IPF) coloring
 
-#### `Texture.Symmetry`
+Assigns RGB colors to crystal orientations based on which crystallographic direction aligns with a chosen sample direction. This is the standard coloring scheme used in EBSD maps -- e.g., in a cubic IPF-Z map, grains with [001] parallel to the sample normal appear red, [101] green, and [111] blue.
 
-Crystal symmetry operations and fundamental zone computation.
+### EBSD file I/O
 
-**Key types:**
+Reads and writes the two main EBSD data file formats:
 
-- `Symm` -- Crystal symmetry group: `Cubic`, `Hexagonal`, or `Custom`.
-- `SymmOp` -- A symmetry operator (wraps a `Quaternion`).
+- **ANG** (TSL/OIM by EDAX) -- Euler angles in radians
+- **CTF** (Channel Text File by Oxford/HKL) -- Euler angles in degrees
 
-**Key functions:**
+Bidirectional conversion between ANG and CTF is supported. Auto-detection reads either format.
 
-- `getSymmOps` -- Generate all symmetry operators for a symmetry group (e.g., 24 for cubic).
-- `toFZ` -- Map a quaternion into the fundamental zone (minimum rotation angle among symmetric equivalents).
-- `getMisoAngle` -- Minimum misorientation angle between two orientations accounting for crystal symmetry.
-- `getAllSymmVec`, `getUniqueSymmVecs` -- All (or unique) symmetric equivalents of a direction vector.
-- `isInRodriFZ` -- Fundamental zone test using Rodrigues-Frank space planes (faster for grid filtering).
+### Sphere grids and projections
 
-### Texture Distributions
+- **Tesseract grid** -- discretization of quaternion space using a 4-cube decomposition for binning orientation data
+- **Icosahedral geodesic grid** -- uniform discretization of the 2-sphere for directional data, built by recursive subdivision of an icosahedron
+- **Sphere projections** -- Lambert equal-area and stereographic projections for 2D visualization of pole figures
 
-#### `Texture.ODF`
-
-Orientation Distribution Function built by kernel density estimation on a discrete grid in Rodrigues-Frank fundamental zone space, backed by a vantage-point tree for fast neighbor queries.
-
-**Key type:**
-
-- `ODF` -- Contains the grid of quaternions, intensity values, a VP-tree index, symmetry, kernel width, grid size, and step.
-
-**Key functions:**
-
-- `buildEmptyODF` -- Construct an empty ODF given kernel width, symmetry, and grid step size.
-- `addPoints` -- Accumulate orientation data using Gaussian kernel density estimation.
-- `getODFeval` -- Return a function that evaluates the ODF intensity at any quaternion.
-- `getMaxOrientation` -- Find the orientation with maximum intensity.
-- `renderODFVTK` -- Export the ODF to VTK format for visualization.
-
-#### `Texture.DDF`
-
-Direction Distribution Function -- kernel density estimation on the unit sphere (S2) for directional data (e.g., pole figures). Uses an icosahedral geodesic grid (`IsoSphere`) and a VP-tree.
-
-#### `Texture.Kernel`
-
-Gaussian kernel density estimation engine for both ODF and DDF. Uses mutable ST vectors internally and the VP-tree for efficient neighbor lookup (only points within 3 sigma contribute).
-
-#### `Texture.Bingham`
-
-The Bingham distribution on the 3-sphere (S3), used for parametric modeling of crystallographic texture.
-
-**Key type:**
-
-- `Bingham` -- Contains concentration values, direction matrix, normalization constant F, mode quaternion, partial derivatives, and scatter matrix.
-
-**Key functions:**
-
-- `mkBingham` -- Construct from three (concentration, direction) pairs.
-- `binghamPDF` -- Evaluate the probability density function at a quaternion.
-- `fitBingham` -- Fit a Bingham distribution to observed quaternions using MLE (scatter matrix eigendecomposition + BFGS optimization).
-- `sampleBingham` -- Generate samples using Metropolis-Hastings with an angular central Gaussian proposal.
-- `bingProduct` -- Product of two Bingham distributions.
-
-#### `Texture.Bingham.Constant` (internal)
-
-Computation of the Bingham normalization constant via saddle-point approximation (Kume and Wood, 2005/2007).
-
-### Sampling
-
-#### `Texture.Sampler`
-
-Hit-and-Run Slice Sampler -- a general-purpose MCMC sampler for arbitrary probability distributions, applicable to quaternions, 2D vectors, and scalars. Features adaptive step sizes and long-range exploration shots.
-
-### Grids and Geometry
-
-#### `Texture.TesseractGrid`
-
-Discretization of quaternion space using a tesseract (4-cube) decomposition covering S3 with four cubic charts.
-
-- `genQuaternionGrid` -- Generate a uniform grid of quaternions.
-- `binningTesseract`, `accuTesseract` -- Bin quaternion data onto the grid.
-- `plotTesseract` -- VTK export.
-
-#### `Texture.IsoSphere`
-
-Geodesic grid on the 2-sphere based on recursive subdivision of an icosahedron.
-
-- `isoSphere` -- Create at a given subdivision level.
-- `nearestPoint` -- Fast hierarchical nearest-point query.
-- `genIsoSphereSO3Grid` -- Generate SO3 grid using icosahedral shells filtered to the Rodrigues FZ.
-
-#### `Texture.HyperSphere`
-
-Coordinate systems and grids on S2 (SO2) and S3 (SO3).
-
-- `so3ToQuaternion`, `quaternionToSO3` -- Convert between SO3 coordinates and quaternions.
-- `getSO2Grid`, `getSO3Grid` -- Regular grids on spheres.
-- VTK rendering for scalar fields on spheres.
-
-#### `Texture.SphereProjection`
-
-2D projections: Lambert equal-area and stereographic.
-
-### Inverse Pole Figure
-
-#### `Texture.IPF`
-
-IPF color computation. Assigns RGB colors to orientations based on the crystallographic direction parallel to a chosen sample direction.
-
-- `getIPFColor` -- Compute IPF color for a quaternion in a given symmetry group.
-- `genIPFLegend` -- Generate an IPF color legend.
-
-### File I/O
-
-#### `File.ANGReader` / `File.ANGWriter`
-
-Read and write ANG files (TSL/OIM EBSD format). Euler angles parsed in radians, immediately converted to quaternions.
-
-- `parseANG` -- Read and parse an ANG file.
-- `renderANGFile` -- Write an ANG file.
-- `angToVoxBox` -- Convert ANG data to a `VoxBox`.
-
-#### `File.CTFReader` / `File.CTFWriter`
-
-Read and write CTF files (Oxford/HKL Channel Text File format). Euler angles parsed in degrees.
-
-- `parseCTF` -- Read and parse a CTF file.
-- `renderCTFFile` -- Write a CTF file.
-- `ctfToVoxBox` -- Convert CTF data to a `VoxBox`.
-
-#### `File.EBSD`
-
-Unified EBSD interface with format conversion and auto-detection.
-
-- `readEBSD` -- Auto-detect and parse either ANG or CTF format.
-- `readEBSDToVoxBox` -- Read EBSD data and convert to a `VoxBox`.
-- `writeANG`, `writeCTF` -- Write any EBSD data to ANG or CTF format.
-- `EBSD` typeclass with `toANG` and `toCTF` for bidirectional conversion.
-
-#### `File.ODFReader`
-
-Parser for discrete ODF grid files (text format).
-
-## File Formats
-
-| Format | Extension | Read | Write | Angles | Origin |
-|--------|-----------|------|-------|--------|--------|
-| ANG    | `.ang`    | Yes  | Yes   | Radians (Euler) | TSL/OIM (EDAX) |
-| CTF    | `.ctf`    | Yes  | Yes   | Degrees (Euler) | Oxford/HKL (Channel) |
-| ODF    | (text)    | Yes  | No    | Discrete grid   | Generic |
-
-Bidirectional ANG <-> CTF conversion is supported with approximate field mapping.
-
-## Algorithms
-
-### Kernel Density Estimation
-
-The ODF and DDF are built by placing Gaussian kernels at each observed orientation/direction. A vantage-point tree indexes the grid points for efficient neighbor lookup (only points within 3 sigma contribute).
-
-### Bingham Distribution Fitting (MLE)
-
-1. Compute the scatter matrix of the observed quaternions.
-2. Eigendecompose to obtain principal directions and eigenvalues.
-3. Find concentration parameters via BFGS optimization matching theoretical and observed partial derivatives of the normalization constant.
-
-### Bingham Normalization (Saddle-Point Approximation)
-
-Uses the method of Kume and Wood (2005, 2007): find the saddle point via Newton's method, apply the Laplace-type expansion with a fourth-order correction.
-
-### Metropolis-Hastings Sampling (Bingham)
-
-Proposal distribution: angular central Gaussian parameterized by the Bingham scatter matrix eigenvectors. Standard MH acceptance ratio. Burn-in of 20 samples.
-
-### Hit-and-Run Slice Sampling
-
-General MCMC sampler: draw a vertical level below current density, choose a random direction, expand an interval until both endpoints fall below the level, sample uniformly with shrinking on rejection. Adaptive step sizes and periodic long-range exploration shots.
-
-### Fundamental Zone Computation
-
-Two approaches: quaternion-based (apply all symmetry operators, maximize |q0|) and Rodrigues-Frank plane test (faster for bulk grid filtering).
-
-## Usage Examples
-
-### Orientation manipulation
+## Example
 
 ```haskell
 import Texture.Orientation
-
-let e1 = mkEuler (Deg 30) (Deg 45) (Deg 60)
-    q1 = toQuaternion e1
-
--- Compose rotations
-let q3 = q1 #<= q2
-
--- Misorientation in crystal frame
-let miso = q2 -#- q1
-
--- Convert between representations
-let rod = fromQuaternion q1 :: Rodrigues
-    mat = fromQuaternion q1 :: RotMatrix
-```
-
-### Building an ODF from EBSD data
-
-```haskell
+import Texture.Bingham
 import File.EBSD
-import Texture.ODF
 
+-- Read EBSD data and fit a Bingham distribution
 ebsd <- readEBSD "sample.ang"
 let qs = case ebsd of
       Left ang  -> V.map rotation (nodes ang)
       Right ctf -> V.map rotation (nodes ctf)
 
-let odf = addPoints (U.convert qs) (buildEmptyODF (Deg 2.5) Cubic (Deg 3))
+let dist = fitBingham (U.convert qs)           -- fit Bingham to observed orientations
+    density = binghamPDF dist someQuaternion    -- evaluate probability density
+samples <- sampleBingham dist 10000             -- draw 10,000 samples
 ```
 
-### Fitting a Bingham distribution
+## Where is it used?
 
-```haskell
-import Texture.Bingham
+- **VirMat** -- the virtual microstructure generator uses `sledge` to assign crystallographic orientations to generated grains (via Bingham distribution sampling), compute IPF colors for visualization, and export ANG files for analysis in EBSD software (OIM, MTEX, etc.)
 
-let dist = fitBingham (U.fromList quaternionList)
-let density = binghamPDF dist someQuaternion
-samples <- sampleBingham dist 10000
-```
-
-### File format conversion
-
-```haskell
-import File.EBSD
-
-ebsd <- readEBSD "input.ang"
-case ebsd of
-  Left ang -> writeCTF "output.ctf" ang
-  Right ctf -> writeCTF "output.ctf" ctf
-```
-
-## Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| `base` (>= 4, < 5) | Standard library |
-| `attoparsec` | Fast parsing for ANG/CTF/ODF files |
-| `binary` | Binary serialization (TesseractGrid) |
-| `blaze-builder` | Efficient ByteString construction for file writers |
-| `bytestring` | Byte string I/O |
-| `deepseq` | NFData instances |
-| `hammer` | VTK output, VoxBox, BFGS optimizer |
-| `linear-vect` | Vector/matrix algebra, eigendecomposition |
-| `primitive` | Mutable vector primitives |
-| `queryforest` | Vantage-point tree for spatial queries |
-| `random` | Random number generation |
-| `text` | Text processing |
-| `vector` | Boxed and unboxed vectors |
-| `vector-binary-instances` | Binary instances for vectors |
-| `vector-th-unbox` | Template Haskell for Unbox instances |
-
-## Building
+## How to build
 
 ```bash
-# With Stack (from the parent project)
-stack build sledge
+# With Nix (recommended)
+nix develop
+cabal build --allow-newer
 
 # With Cabal
 cabal build
 
-# With Nix
-nix develop
-cabal build
-
 # Run tests
-stack test sledge
-```
-
-Optional visual test executables (behind the `tests` flag):
-
-```bash
-stack build sledge --flag sledge:tests
-# test-kernel-sampling, test-odf, test-sampler
+cabal test
 ```
 
 ## References
 
-- Conversion of EBSD data by a quaternion based algorithm to be used for grain structure simulations.
-- Orientation Library Manual by Romain Quey.
-- K. Shoemake, "Uniform random rotations," in Graphics Gems III, 1992.
-- F.L. Markley, "Averaging Quaternions," 2007.
 - A. Kume and A.T.A. Wood, "Saddlepoint approximations for the Bingham and Fisher-Bingham normalising constants," Biometrika, 2005.
 - A. Kume and A.T.A. Wood, "On the derivatives of the normalising constant of the Bingham distribution," Statistics & Probability Letters, 2007.
-
-## Author
-
-Edgar Gomes de Araujo (<talktoedgar@gmail.com>)
+- K. Shoemake, "Uniform random rotations," Graphics Gems III, 1992.
+- F.L. Markley, "Averaging Quaternions," 2007.
 
 ## License
 
