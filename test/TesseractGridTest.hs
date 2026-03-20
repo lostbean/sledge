@@ -2,11 +2,10 @@ module TesseractGridTest (
     test,
 ) where
 
-import qualified Data.Vector as V
-import Linear.Vect
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
+import TestOrphans ()
 import Texture.Orientation
 import Texture.TesseractGrid
 
@@ -41,11 +40,3 @@ testIndexing = do
         (c', pos') = getTesseractPos m p
     assertEqual "Cell index" c c'
     assertEqual "Position" pos pos'
-
-instance Arbitrary Quaternion where
-    arbitrary = do
-        w <- choose (-1, 1)
-        x <- choose (-1, 1)
-        y <- choose (-1, 1)
-        z <- choose (-1, 1)
-        return $ mkQuaternion (Vec4 w x y z)

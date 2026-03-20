@@ -2,11 +2,11 @@ module BinghamTest (
     test,
 ) where
 
-import qualified Data.Vector.Unboxed as U
 import Linear.Vect
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
+import TestOrphans ()
 import Texture.Bingham
 import Texture.Orientation
 
@@ -59,16 +59,3 @@ prop_modeIsMax z1 z2 z3 q =
      in
         counterexample ("PDF Mode: " ++ show pdfMode ++ ", PDF Q: " ++ show pdfQ) $
             pdfMode >= pdfQ - 1e-9
-
--- We need Arbitrary instance for Quaternion, but it's already in TestTexture.
--- To avoid duplication, we might want to move these instances to a shared module.
--- For now, I'll just use the one from TestTexture if I can, or re-define here if needed.
--- Since they are orphans in TestTexture, I can't easily import them unless I import TestTexture.
-
-instance Arbitrary Quaternion where
-    arbitrary = do
-        w <- choose (-1, 1)
-        x <- choose (-1, 1)
-        y <- choose (-1, 1)
-        z <- choose (-1, 1)
-        return $ mkQuaternion (Vec4 w x y z)

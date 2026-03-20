@@ -2,7 +2,6 @@ module IPFTest (
     test,
 ) where
 
-import Linear.Vect
 import Test.Tasty
 import Test.Tasty.HUnit
 import Texture.IPF

@@ -6,7 +6,6 @@ module TestTexture (
     testOrientation,
 ) where
 
-import Control.Applicative
 import Data.Vector (Vector)
 import Test.QuickCheck
 import Test.Tasty
@@ -16,6 +15,7 @@ import Test.Tasty.QuickCheck as QC
 import qualified Data.Vector as V
 import Linear.Mat
 import Linear.Vect
+import TestOrphans ()
 import Texture.Orientation
 import Texture.Symmetry
 
@@ -29,25 +29,8 @@ testTexture =
         , QC.testProperty "fundamental zone(matrix)" testFundamentalZoneMatrix
         ]
 
-instance Arbitrary Euler where
-    arbitrary = liftA3 mkEuler x2 x1 x2
-      where
-        x1 = Deg <$> choose (0, 180)
-        x2 = Deg <$> choose (0, 360)
-
-instance Arbitrary Vec3D where
-    arbitrary = normalize <$> liftA3 Vec3 p p p
-      where
-        p = choose (0, 1)
-
-instance Arbitrary Quaternion where
-    arbitrary = toQuaternion <$> (arbitrary :: Gen Euler)
-
-instance Arbitrary Rodrigues where
-    arbitrary = fromQuaternion <$> arbitrary
-
 msgFail :: (Show a, Testable prop) => a -> prop -> Property
-msgFail text = printTestCase ("\x1b[7m Fail: " ++ show text ++ "! \x1b[0m")
+msgFail text = counterexample ("\x1b[7m Fail: " ++ show text ++ "! \x1b[0m")
 
 errLimit :: Double
 errLimit = 1e-7
@@ -220,9 +203,6 @@ testOrientation =
         , testOrientationModule
         , testConv
         ]
-
-instance Arbitrary Deg where
-    arbitrary = Deg <$> arbitrary
 
 (=@=) :: Deg -> Deg -> Bool
 a =@= b = abs (a - b) < Deg 0.0001
