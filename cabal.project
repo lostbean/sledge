@@ -3,7 +3,7 @@ packages: .
 source-repository-package
   type: git
   location: https://github.com/lostbean/hammer
-  tag: 4e175274b2e5e3bff9bfb2e6ee49308dbd501f38
+  tag: 48a4d06bb698e9fe360aef968ed08f376b5aad9f
 
 source-repository-package
   type: git
