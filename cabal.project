@@ -3,24 +3,24 @@ packages: .
 source-repository-package
   type: git
   location: https://github.com/lostbean/hammer
-  tag: 7d97f903e0d9488efd9078bff3ebfb4a3760629e
+  tag: 4e175274b2e5e3bff9bfb2e6ee49308dbd501f38
 
 source-repository-package
   type: git
   location: https://github.com/lostbean/linear-vect
-  tag: e2438fbc2e5f3bbc56454acf9173b7505eebcd3d
+  tag: 5391c2ef7b7bcfaf5aa66e7be3102601125d4499
 
 source-repository-package
   type: git
   location: https://github.com/lostbean/queryforest
-  tag: ce8e99683d0e6a1c18df9df9bb13e8194f7baff8
+  tag: ea36c8495a18e5641f9e63380f6c90d03a2768d9
 
 source-repository-package
   type: git
   location: https://github.com/lostbean/vtk
-  tag: 1c21f6928c788c7c5e248d1429332cb0240a3e22
+  tag: 69cbb2281747fa291522ba12c24015879682a6a2
 
 source-repository-package
   type: git
   location: https://github.com/lostbean/mcl
-  tag: f72469c6fb7153f38d3ca80fdeb4e03298b925b4
+  tag: ae6895e57c5606fd89e1dc10b1dc0ead9afecda5
